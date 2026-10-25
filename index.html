@@ -1,0 +1,1277 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AutoManage Toledo - Gestão e Controle de Compra e Venda de Carros</title>
+  <meta name="description" content="Sistema completo de controle de compra e venda de veículos, estoque, despesas, documentos e pagamentos parcelados para revenda automotiva.">
+  <link rel="stylesheet" href="styles.css">
+  <!-- Chart.js para gráficos interativos -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+  <div class="app-wrapper">
+    <!-- ====================================================================
+         SIDEBAR LATERAL (Navegação Principal)
+         ==================================================================== -->
+    <aside class="sidebar" id="appSidebar">
+      <div class="brand-container">
+        <div class="brand-logo-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/>
+            <circle cx="7" cy="17" r="2"/>
+            <path d="M9 17h6"/>
+            <circle cx="17" cy="17" r="2"/>
+          </svg>
+        </div>
+        <div class="brand-text-block">
+          <span class="brand-title">AutoManage</span>
+          <span class="brand-subtitle">Toledo Veículos</span>
+        </div>
+      </div>
+
+      <nav class="nav-menu">
+        <a class="nav-item active" id="navDashboard" onclick="switchView('dashboard')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          <span>Visão Geral</span>
+        </a>
+
+        <a class="nav-item" id="navInventory" onclick="switchView('inventory')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+          <span>Estoque de Carros</span>
+          <span class="nav-badge" id="badgeStockCount">8</span>
+        </a>
+
+        <a class="nav-item" id="navExpenses" onclick="switchView('expenses')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          <span>Despesas</span>
+          <span class="nav-badge" id="badgeExpensesCount">32</span>
+        </a>
+
+        <a class="nav-item" id="navDocuments" onclick="switchView('documents')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" x2="8" y1="13" y2="13"/><line x1="16" x2="8" y1="17" y2="17"/><line x1="10" x2="8" y1="9" y2="9"/></svg>
+          <span>Documentos</span>
+          <span class="nav-badge" id="badgeDocsCount">8</span>
+        </a>
+
+        <a class="nav-item" id="navPayments" onclick="switchView('payments')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
+          <span>Pagamentos & Carnê</span>
+        </a>
+
+        <a class="nav-item" id="navBackup" onclick="switchView('backup')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+          <span>Exportar / Excel</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="promo-card">
+          <div class="promo-card-title">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
+            Sincronizado
+          </div>
+          <div class="promo-card-desc">
+            Base conectada com a planilha <strong>Toledo_v2</strong>. Dados salvos com persistência local.
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ====================================================================
+         CONTEÚDO PRINCIPAL
+         ==================================================================== -->
+    <main class="main-content">
+      <!-- TOPBAR -->
+      <header class="topbar">
+        <div class="topbar-search-box">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          <input type="text" id="globalSearchInput" placeholder="Buscar por modelo, placa, comprador..." oninput="handleGlobalSearch(this.value)">
+        </div>
+
+        <div class="topbar-actions">
+          <button class="theme-toggle-btn" id="themeToggleBtn" onclick="toggleTheme()" title="Alternar Modo Escuro / Claro">
+            <svg id="themeIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>
+            </svg>
+          </button>
+
+          <button class="btn btn-primary btn-sm" id="btnQuickAddCar" onclick="openModalAddVehicle()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg>
+            <span>Novo Carro</span>
+          </button>
+
+          <div class="user-profile-badge">
+            <div class="user-avatar">T</div>
+            <div class="user-info-text">
+              <span class="user-name">Toledo Motors</span>
+              <span class="user-role">Administrador</span>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <!-- ====================================================================
+           PÁGINA 1: VISÃO GERAL (DASHBOARD)
+           ==================================================================== -->
+      <section class="page-container page-view" id="viewDashboard">
+        <div class="page-header">
+          <div>
+            <h1 class="page-header-title">Gestão de Vendas de Veículos</h1>
+            <p class="page-header-subtitle">Organização simples e controle financeiro completo para o seu negócio</p>
+          </div>
+          <div style="display: flex; gap: 10px;">
+            <button class="btn btn-secondary btn-sm" onclick="printReport()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect width="12" height="8" x="6" y="14"/></svg>
+              Imprimir Relatório
+            </button>
+            <button class="btn btn-primary btn-sm" onclick="openModalAddExpense()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg>
+              Lançar Despesa
+            </button>
+          </div>
+        </div>
+
+        <!-- 4 TILES DE ACESSO RÁPIDO (Inspirado no Mockup 21.44.01) -->
+        <div class="tiles-grid-home">
+          <div class="tile-action-card tile-blue" id="tileEstoque" onclick="switchView('inventory')">
+            <div class="tile-icon-wrapper">
+              <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg>
+            </div>
+            <span class="tile-title">Estoque</span>
+            <span class="tile-caption" id="tileEstoqueSub">4 em estoque • 4 vendidos</span>
+          </div>
+
+          <div class="tile-action-card tile-green" id="tileDespesas" onclick="switchView('expenses')">
+            <div class="tile-icon-wrapper">
+              <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="8" r="6"/><path d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path d="M7 6h1v4"/><path d="m16.71 13.88.7.71-2.82 2.82"/></svg>
+            </div>
+            <span class="tile-title">Despesas</span>
+            <span class="tile-caption" id="tileDespesasSub">32 despesas cadastradas</span>
+          </div>
+
+          <div class="tile-action-card tile-orange" id="tileDocumentos" onclick="switchView('documents')">
+            <div class="tile-icon-wrapper">
+              <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><line x1="16" x2="8" y1="13" y2="13"/><line x1="16" x2="8" y1="17" y2="17"/><line x1="10" x2="8" y1="9" y2="9"/></svg>
+            </div>
+            <span class="tile-title">Documentos</span>
+            <span class="tile-caption" id="tileDocumentosSub">8 anexos e laudos</span>
+          </div>
+
+          <div class="tile-action-card tile-red" id="tilePagamentos" onclick="switchView('payments')">
+            <div class="tile-icon-wrapper">
+              <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/><circle cx="16" cy="15" r="1.5"/></svg>
+            </div>
+            <span class="tile-title">Pagamentos</span>
+            <span class="tile-caption" id="tilePagamentosSub">Carnê 2026/2027</span>
+          </div>
+        </div>
+
+        <!-- 4 KPIS EM CARDS (Inspirado no AutoManage 21.29.26 (1)) -->
+        <div class="kpi-grid">
+          <div class="kpi-card">
+            <div class="kpi-card-header">
+              <span class="kpi-label">Valor em Estoque</span>
+              <div class="kpi-icon-pill blue">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
+              </div>
+            </div>
+            <div class="kpi-value" id="kpiEstoqueValor">R$ 104.974</div>
+            <div>
+              <span class="kpi-footer-badge badge-neutral" id="kpiEstoqueCount">4 veículos disponíveis</span>
+            </div>
+          </div>
+
+          <div class="kpi-card">
+            <div class="kpi-card-header">
+              <span class="kpi-label">Lucro Total Realizado</span>
+              <div class="kpi-icon-pill green">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+              </div>
+            </div>
+            <div class="kpi-value" id="kpiLucroTotal">R$ 156.213</div>
+            <div>
+              <span class="kpi-footer-badge badge-positive" id="kpiLucroBadge">+92% rentabilidade média</span>
+            </div>
+          </div>
+
+          <div class="kpi-card">
+            <div class="kpi-card-header">
+              <span class="kpi-label">Total de Carros Vendidos</span>
+              <div class="kpi-icon-pill amber">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              </div>
+            </div>
+            <div class="kpi-value" id="kpiCarrosVendidos">4</div>
+            <div>
+              <span class="kpi-footer-badge badge-positive" id="kpiVendaTotalValor">R$ 317.500 em vendas</span>
+            </div>
+          </div>
+
+          <div class="kpi-card">
+            <div class="kpi-card-header">
+              <span class="kpi-label">Despesas Acumuladas</span>
+              <div class="kpi-icon-pill purple">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" x2="12" y1="1" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+              </div>
+            </div>
+            <div class="kpi-value" id="kpiDespesasTotal">R$ 24.061</div>
+            <div>
+              <span class="kpi-footer-badge badge-neutral" id="kpiDespesasCount">32 lançamentos</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- GRÁFICOS & RESUMO FINANCEIRO -->
+        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 24px; margin-bottom: 32px;">
+          <div class="kpi-card" style="padding: 24px;">
+            <div class="page-header" style="margin-bottom: 16px;">
+              <div>
+                <h3 style="font-size: 1.15rem; font-weight: 700;">Desempenho Financeiro por Veículo</h3>
+                <p class="page-header-subtitle">Comparativo Custo Final (Compra + Despesas) vs Valor de Venda</p>
+              </div>
+            </div>
+            <div style="position: relative; height: 260px; width: 100%;">
+              <canvas id="chartLucroCarros"></canvas>
+            </div>
+          </div>
+
+          <div class="kpi-card" style="padding: 24px;">
+            <div class="page-header" style="margin-bottom: 16px;">
+              <div>
+                <h3 style="font-size: 1.15rem; font-weight: 700;">Distribuição das Despesas</h3>
+                <p class="page-header-subtitle">Por categoria de gasto</p>
+              </div>
+            </div>
+            <div style="position: relative; height: 260px; width: 100%;">
+              <canvas id="chartCategoriasDespesas"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- VEÍCULOS RECENTES -->
+        <div class="page-header" style="margin-bottom: 16px;">
+          <div>
+            <h2 style="font-size: 1.25rem; font-weight: 700;">Veículos no Pátio / Destaques</h2>
+            <p class="page-header-subtitle">Acesso rápido aos veículos cadastrados</p>
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="switchView('inventory')">Ver Todos os Veículos &rarr;</button>
+        </div>
+        <div class="vehicles-grid" id="dashboardVehiclesGrid"></div>
+      </section>
+
+      <!-- ====================================================================
+           PÁGINA 2: ESTOQUE DE CARROS (INVENTORY)
+           ==================================================================== -->
+      <section class="page-container page-view" id="viewInventory" style="display: none;">
+        <div class="page-header">
+          <div>
+            <h1 class="page-header-title">Estoque de Veículos</h1>
+            <p class="page-header-subtitle">Gerencie compras, vendas, valores e status de cada veículo</p>
+          </div>
+          <div style="display: flex; gap: 10px;">
+            <button class="btn btn-secondary btn-sm" onclick="exportVehiclesToCSV()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+              Exportar CSV
+            </button>
+            <button class="btn btn-primary" onclick="openModalAddVehicle()">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg>
+              Adicionar Carro
+            </button>
+          </div>
+        </div>
+
+        <!-- BARRA DE FILTROS -->
+        <div class="filter-bar">
+          <div class="filter-group">
+            <select class="select-control" id="filterStatus" onchange="applyVehicleFilters()">
+              <option value="todos">Todos os Status</option>
+              <option value="Em estoque">Em estoque</option>
+              <option value="Em preparação">Em preparação</option>
+              <option value="Vendido">Vendido</option>
+            </select>
+
+            <select class="select-control" id="filterMarca" onchange="applyVehicleFilters()">
+              <option value="todas">Todas as Marcas</option>
+            </select>
+
+            <select class="select-control" id="filterSociedade" onchange="applyVehicleFilters()">
+              <option value="todos">Todas as Sociedades</option>
+              <option value="Lagoa">Sociedade Lagoa</option>
+              <option value="sem_sociedade">Sem Sociedade</option>
+            </select>
+          </div>
+
+          <div class="filter-group">
+            <div class="view-mode-toggle">
+              <button class="view-mode-btn active" id="btnViewCards" onclick="setInventoryViewMode('cards')">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>
+                Cards
+              </button>
+              <button class="view-mode-btn" id="btnViewTable" onclick="setInventoryViewMode('table')">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></svg>
+                Tabela
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- MODO CARDS -->
+        <div class="vehicles-grid" id="inventoryCardsContainer"></div>
+
+        <!-- MODO TABELA (Fiel à Planilha Controle de Carros) -->
+        <div class="table-responsive-wrapper" id="inventoryTableContainer" style="display: none; margin-top: 16px;">
+          <table class="modern-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Veículo</th>
+                <th>Placa</th>
+                <th>Ano</th>
+                <th>Data Compra</th>
+                <th>Valor Compra</th>
+                <th>Despesas</th>
+                <th>Custo Final</th>
+                <th>Valor FIPE</th>
+                <th>Data Venda</th>
+                <th>Comprador</th>
+                <th>Valor Venda</th>
+                <th>Entrada</th>
+                <th>Parcelamento</th>
+                <th>Lucro</th>
+                <th>Status</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody id="inventoryTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ====================================================================
+           PÁGINA 3: DESPESAS (EXPENSES)
+           ==================================================================== -->
+      <section class="page-container page-view" id="viewExpenses" style="display: none;">
+        <div class="page-header">
+          <div>
+            <h1 class="page-header-title">Controle de Despesas por Veículo</h1>
+            <p class="page-header-subtitle">Lance cada custo detalhado (Mecânica, Estética, Peças, Documentação, Comissão Lagoa)</p>
+          </div>
+          <div style="display: flex; gap: 10px;">
+            <button class="btn btn-secondary btn-sm" onclick="exportExpensesToCSV()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+              Exportar CSV
+            </button>
+            <button class="btn btn-primary" onclick="openModalAddExpense()">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg>
+              Nova Despesa
+            </button>
+          </div>
+        </div>
+
+        <!-- RESUMO DE DESPESAS -->
+        <div class="kpi-grid">
+          <div class="kpi-card">
+            <span class="kpi-label">Total de Gastos</span>
+            <div class="kpi-value" id="expKpiTotal">R$ 24.061,80</div>
+            <span class="kpi-footer-badge badge-neutral">Soma de todos os veículos</span>
+          </div>
+
+          <div class="kpi-card">
+            <span class="kpi-label">Maior Gasto Individual</span>
+            <div class="kpi-value" id="expKpiMax">R$ 5.000,00</div>
+            <span class="kpi-footer-badge badge-neutral">Comissão / Sociedade Lagoa</span>
+          </div>
+
+          <div class="kpi-card">
+            <span class="kpi-label">Carro com Mais Despesas</span>
+            <div class="kpi-value" id="expKpiTopCar">Fiat Toro</div>
+            <span class="kpi-footer-badge badge-neutral">R$ 10.200 em 6 itens</span>
+          </div>
+        </div>
+
+        <!-- FILTRO DE DESPESAS -->
+        <div class="filter-bar">
+          <div class="filter-group">
+            <select class="select-control" id="filterExpenseVehicle" onchange="renderExpensesTable()">
+              <option value="todos">Todos os Veículos</option>
+            </select>
+
+            <select class="select-control" id="filterExpenseCategory" onchange="renderExpensesTable()">
+              <option value="todas">Todas as Categorias</option>
+              <option value="Mecânica">Mecânica</option>
+              <option value="Estética">Estética / Higienização</option>
+              <option value="Peças e Acessórios">Peças e Acessórios</option>
+              <option value="Funilaria e Pintura">Funilaria e Pintura</option>
+              <option value="Pneus">Pneus</option>
+              <option value="Documentação">Documentação</option>
+              <option value="Transporte e Guincho">Transporte e Guincho</option>
+              <option value="Comissão / Sociedade">Comissão / Sociedade</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- TABELA DE DESPESAS -->
+        <div class="table-responsive-wrapper">
+          <table class="modern-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Data</th>
+                <th>Veículo</th>
+                <th>Placa</th>
+                <th>Categoria</th>
+                <th>Item / Descrição</th>
+                <th>Valor (R$)</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody id="expensesTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ====================================================================
+           PÁGINA 4: DOCUMENTOS (DOCUMENTS)
+           ==================================================================== -->
+      <section class="page-container page-view" id="viewDocuments" style="display: none;">
+        <div class="page-header">
+          <div>
+            <h1 class="page-header-title">Documentos & Fotos por Veículo</h1>
+            <p class="page-header-subtitle">Links do Google Drive, OneDrive, laudos cautelares, CRLVs e ATPVs</p>
+          </div>
+          <button class="btn btn-primary" onclick="openModalAddDocument()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg>
+            Anexar Documento
+          </button>
+        </div>
+
+        <div class="filter-bar">
+          <div class="filter-group">
+            <select class="select-control" id="filterDocVehicle" onchange="renderDocumentsGrid()">
+              <option value="todos">Todos os Veículos</option>
+            </select>
+            <select class="select-control" id="filterDocType" onchange="renderDocumentsGrid()">
+              <option value="todos">Todos os Tipos</option>
+              <option value="CRLV">CRLV</option>
+              <option value="ATPV">ATPV</option>
+              <option value="Laudo Cautelar">Laudo Cautelar</option>
+              <option value="Laudo Transferência">Laudo Transferência</option>
+              <option value="Contrato">Contrato de Compra e Venda</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="vehicles-grid" id="documentsGridContainer"></div>
+      </section>
+
+      <!-- ====================================================================
+           PÁGINA 5: PAGAMENTOS & CARNÊ (PAYMENTS)
+           ==================================================================== -->
+      <section class="page-container page-view" id="viewPayments" style="display: none;">
+        <div class="page-header">
+          <div>
+            <h1 class="page-header-title">Controle de Pagamentos & Parcelas (2026 / 2027)</h1>
+            <p class="page-header-subtitle">Acompanhe entradas, carnês de parcelamento próprio e fluxo mensal</p>
+          </div>
+          <div style="display: flex; gap: 10px;">
+            <button class="btn btn-secondary btn-sm" onclick="printPaymentReceipt()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect width="12" height="8" x="6" y="14"/></svg>
+              Imprimir Carnê
+            </button>
+            <button class="btn btn-success" onclick="openModalSettlement()" title="Fazer quitação ou baixa de parcela">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+              Quitação / Baixar Parcela
+            </button>
+          </div>
+        </div>
+
+        <div class="kpi-grid">
+          <div class="kpi-card">
+            <span class="kpi-label">Entradas Recebidas</span>
+            <div class="kpi-value" id="kpiEntradasTotal">R$ 84.000</div>
+            <span class="kpi-footer-badge badge-positive">4 carros vendidos com entrada</span>
+          </div>
+
+          <div class="kpi-card">
+            <span class="kpi-label">Parcelas em Aberto</span>
+            <div class="kpi-value" id="kpiParcelasAberto">148 parcelas</div>
+            <span class="kpi-footer-badge badge-neutral">Total a receber no carnê</span>
+          </div>
+
+          <div class="kpi-card">
+            <span class="kpi-label">Valor Mensal Previsto</span>
+            <div class="kpi-value" id="kpiValorMensalFluxo">R$ 6.000 / mês</div>
+            <span class="kpi-footer-badge badge-positive">Fluxo regular de caixa</span>
+          </div>
+        </div>
+
+        <!-- MATRIZ DE PAGAMENTOS MENSAIS (Estilo Abas Pagamentos 2026/2027) -->
+        <div class="schedule-table-card" style="margin-bottom: 24px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <h3 style="font-size: 1.15rem; font-weight: 700;">Matriz de Recebimento Mensal — 2026 / 2027</h3>
+            <div style="display: flex; gap: 8px;">
+              <button class="btn btn-secondary btn-sm active" id="btnYear2026" onclick="setPaymentsYear(2026)">Ano 2026</button>
+              <button class="btn btn-secondary btn-sm" id="btnYear2027" onclick="setPaymentsYear(2027)">Ano 2027</button>
+            </div>
+          </div>
+
+          <div class="table-responsive-wrapper">
+            <table class="modern-table payments-matrix" id="paymentsMatrixTable">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Modelo</th>
+                  <th>Jan</th>
+                  <th>Fev</th>
+                  <th>Mar</th>
+                  <th>Abr</th>
+                  <th>Mai</th>
+                  <th>Jun</th>
+                  <th>Jul</th>
+                  <th>Ago</th>
+                  <th>Set</th>
+                  <th>Out</th>
+                  <th>Nov</th>
+                  <th>Dez</th>
+                </tr>
+              </thead>
+              <tbody id="paymentsMatrixBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- LISTA DE CARNÊS ATIVOS -->
+        <div class="schedule-table-card">
+          <h3 style="font-size: 1.15rem; font-weight: 700; margin-bottom: 16px;">Detalhamento das Vendas Financiadas</h3>
+          <div class="table-responsive-wrapper">
+            <table class="modern-table">
+              <thead>
+                <tr>
+                  <th>Veículo</th>
+                  <th>Comprador</th>
+                  <th>Valor Total</th>
+                  <th>Entrada</th>
+                  <th>Plano</th>
+                  <th>Parcela</th>
+                  <th>Parcelas Pagas</th>
+                  <th>Saldo Devedor</th>
+                  <th>Status</th>
+                  <th>Ações</th>
+                </tr>
+              </thead>
+              <tbody id="activeFinancingTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ====================================================================
+           PÁGINA 6: DETALHES DO VEÍCULO (FICHA INDIVIDUAL - Mockup 21.29.26 (2))
+           ==================================================================== -->
+      <section class="page-container page-view" id="viewVehicleDetail" style="display: none;">
+        <div class="page-header">
+          <div>
+            <button class="btn btn-secondary btn-sm" onclick="switchView('inventory')" style="margin-bottom: 8px;">
+              &larr; Voltar para Estoque
+            </button>
+            <h1 class="page-header-title" id="detailCarTitle">Toyota RAV4 XLE</h1>
+            <p class="page-header-subtitle" id="detailCarSubtitle">Placa ABC-1234 • Ano 2022</p>
+          </div>
+
+          <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <button class="btn btn-secondary" id="btnEditCar" onclick="editCurrentCar()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+              Editar Veículo
+            </button>
+            <button class="btn btn-success" id="btnSellCarAction" onclick="openModalSellVehicle()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg>
+              Registrar Venda
+            </button>
+            <button class="btn btn-primary" onclick="openModalAddExpenseForCurrentCar()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg>
+              Adicionar Despesa
+            </button>
+            <button class="btn btn-warning" onclick="openModalAddDocumentForCurrentCar()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="12" x2="12" y1="11" y2="17"/><line x1="9" x2="15" y1="14" y2="14"/></svg>
+              Anexar Documento
+            </button>
+          </div>
+        </div>
+
+        <div class="detail-view-layout">
+          <!-- Coluna da Esquerda: Ficha Técnica -->
+          <div class="detail-sidebar-card">
+            <div class="vehicle-detail-banner" id="detailCarBanner">
+              <div class="vehicle-banner-icon">
+                <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                  <path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/>
+                  <circle cx="7" cy="17" r="2"/>
+                  <path d="M9 17h6"/>
+                  <circle cx="17" cy="17" r="2"/>
+                </svg>
+              </div>
+              <div class="vehicle-banner-info">
+                <span class="vehicle-banner-plate" id="detailCarBannerPlate">PLACA</span>
+                <span class="vehicle-banner-status" id="detailCarBannerStatus">Veículo</span>
+              </div>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span class="status-pill" id="detailCarStatusBadge">Em estoque</span>
+              <span class="profit-text" id="detailCarProfitBadge"></span>
+            </div>
+
+            <div class="spec-list-grid">
+              <div class="spec-item-box">
+                <span class="spec-label">Marca</span>
+                <span class="spec-val" id="detailSpecMarca">-</span>
+              </div>
+              <div class="spec-item-box">
+                <span class="spec-label">Ano</span>
+                <span class="spec-val" id="detailSpecAno">-</span>
+              </div>
+              <div class="spec-item-box">
+                <span class="spec-label">Placa</span>
+                <span class="spec-val" id="detailSpecPlaca">-</span>
+              </div>
+              <div class="spec-item-box">
+                <span class="spec-label">Câmbio</span>
+                <span class="spec-val" id="detailSpecCambio">-</span>
+              </div>
+              <div class="spec-item-box">
+                <span class="spec-label">Combustível</span>
+                <span class="spec-val" id="detailSpecCombustivel">-</span>
+              </div>
+              <div class="spec-item-box">
+                <span class="spec-label">Sociedade</span>
+                <span class="spec-val" id="detailSpecSociedade">Nenhuma</span>
+              </div>
+            </div>
+
+            <!-- Resumo Financeiro da Ficha -->
+            <div style="background-color: var(--bg-card); padding: 18px; border-radius: var(--radius-md); border: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 10px;">
+              <div style="display: flex; justify-content: space-between;">
+                <span style="font-size: 0.82rem; color: var(--text-muted);">Valor de Compra:</span>
+                <strong id="detailFinCompra">R$ 0,00</strong>
+              </div>
+              <div style="display: flex; justify-content: space-between;">
+                <span style="font-size: 0.82rem; color: var(--text-muted);">Total de Despesas:</span>
+                <strong style="color: var(--danger);" id="detailFinDespesas">R$ 0,00</strong>
+              </div>
+              <div style="display: flex; justify-content: space-between; padding-top: 8px; border-top: 1px solid var(--border-color);">
+                <span style="font-size: 0.85rem; font-weight: 700;">Custo Final:</span>
+                <strong style="font-size: 1.15rem; color: var(--primary);" id="detailFinCustoFinal">R$ 0,00</strong>
+              </div>
+              <div style="display: flex; justify-content: space-between;">
+                <span style="font-size: 0.82rem; color: var(--text-muted);">Valor FIPE:</span>
+                <span id="detailFinFipe">R$ 0,00</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; padding-top: 8px; border-top: 1px solid var(--border-color);" id="detailFinVendaRow">
+                <span style="font-size: 0.85rem; font-weight: 700;">Valor de Venda:</span>
+                <strong style="font-size: 1.15rem; color: var(--success);" id="detailFinVenda">R$ 0,00</strong>
+              </div>
+              <div style="display: flex; justify-content: space-between;" id="detailFinLucroRow">
+                <span style="font-size: 0.85rem; font-weight: 700;">Lucro Líquido:</span>
+                <strong style="font-size: 1.25rem; color: var(--success);" id="detailFinLucro">R$ 0,00</strong>
+              </div>
+            </div>
+          </div>
+
+          <!-- Coluna da Direita: Despesas do Veículo & Documentos -->
+          <div class="detail-main-panel">
+            <!-- Abas do Veículo -->
+            <div class="filter-bar" style="margin-bottom: 0;">
+              <div class="filter-group">
+                <button class="btn btn-secondary btn-sm active" id="tabBtnDespesasCarro" onclick="switchDetailTab('despesas')">
+                  Despesas Vinculadas (<span id="detailCarExpensesCount">0</span>)
+                </button>
+                <button class="btn btn-secondary btn-sm" id="tabBtnDocsCarro" onclick="switchDetailTab('documentos')">
+                  Documentos & Arquivos (<span id="detailCarDocsCount">0</span>)
+                </button>
+                <button class="btn btn-secondary btn-sm" id="tabBtnPagamentosCarro" onclick="switchDetailTab('pagamentos')">
+                  Carnê & Parcelas
+                </button>
+              </div>
+            </div>
+
+            <!-- Painel 1: Despesas -->
+            <div id="detailPanelExpenses" class="table-responsive-wrapper">
+              <table class="modern-table">
+                <thead>
+                  <tr>
+                    <th>Data</th>
+                    <th>Categoria</th>
+                    <th>Descrição do Item</th>
+                    <th>Valor (R$)</th>
+                    <th>Ações</th>
+                  </tr>
+                </thead>
+                <tbody id="detailCarExpensesTableBody"></tbody>
+              </table>
+            </div>
+
+            <!-- Painel 2: Documentos -->
+            <div id="detailPanelDocs" style="display: none;">
+              <div class="vehicles-grid" id="detailCarDocsGrid"></div>
+            </div>
+
+            <!-- Painel 3: Carnê & Parcelas -->
+            <div id="detailPanelPayments" style="display: none;" class="table-responsive-wrapper">
+              <div style="padding: 16px; background: var(--bg-card); border-bottom: 1px solid var(--border-color);" id="detailPaymentSummaryBox"></div>
+              <table class="modern-table">
+                <thead>
+                  <tr>
+                    <th># Parcela</th>
+                    <th>Vencimento</th>
+                    <th>Valor</th>
+                    <th>Status</th>
+                    <th>Data de Pagamento</th>
+                    <th>Ação</th>
+                  </tr>
+                </thead>
+                <tbody id="detailCarPaymentsTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ====================================================================
+           PÁGINA 7: EXPORTAR / EXCEL / BACKUP (BACKUP)
+           ==================================================================== -->
+      <section class="page-container page-view" id="viewBackup" style="display: none;">
+        <div class="page-header">
+          <div>
+            <h1 class="page-header-title">Exportação & Backup dos Dados</h1>
+            <p class="page-header-subtitle">Exporte planilhas em CSV, faça backup JSON ou restaure os dados originais da planilha Toledo_v2</p>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px;">
+          <!-- Card 1: Exportar Planilha Excel / CSV -->
+          <div class="kpi-card" style="padding: 28px;">
+            <div class="kpi-icon-pill green" style="margin-bottom: 12px;">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+            </div>
+            <h3 style="font-size: 1.2rem; font-weight: 700; margin-bottom: 8px;">Exportar para Excel (CSV)</h3>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 20px;">
+              Baixe arquivos compatíveis diretamente com o Microsoft Excel e Google Planilhas.
+            </p>
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+              <button class="btn btn-secondary" onclick="exportVehiclesToCSV()">Exportar Controle de Carros (CSV)</button>
+              <button class="btn btn-secondary" onclick="exportExpensesToCSV()">Exportar Despesas (CSV)</button>
+              <button class="btn btn-secondary" onclick="exportDocumentsToCSV()">Exportar Documentos (CSV)</button>
+            </div>
+          </div>
+
+          <!-- Card 2: Backup Completo JSON -->
+          <div class="kpi-card" style="padding: 28px;">
+            <div class="kpi-icon-pill blue" style="margin-bottom: 12px;">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+            </div>
+            <h3 style="font-size: 1.2rem; font-weight: 700; margin-bottom: 8px;">Backup do Banco de Dados</h3>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 20px;">
+              Salve uma cópia integral do estado do sistema ou importe em outro computador.
+            </p>
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+              <button class="btn btn-primary" onclick="exportFullJSONBackup()">Baixar Arquivo de Backup (JSON)</button>
+              <label class="btn btn-secondary" style="cursor: pointer;">
+                Restaurar Backup de Arquivo
+                <input type="file" id="importJSONInput" accept=".json" style="display: none;" onchange="importJSONBackup(event)">
+              </label>
+            </div>
+          </div>
+
+          <!-- Card 3: Restaurar Planilha Original Toledo_v2 -->
+          <div class="kpi-card" style="padding: 28px; border-color: rgba(239, 68, 68, 0.3);">
+            <div class="kpi-icon-pill amber" style="margin-bottom: 12px;">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+            </div>
+            <h3 style="font-size: 1.2rem; font-weight: 700; margin-bottom: 8px;">Restaurar Dados Originais</h3>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 20px;">
+              Restaura instantaneamente a base padrão dos 8 veículos e 32 despesas extraídas da planilha Excel Toledo_v2.
+            </p>
+            <button class="btn btn-danger" onclick="resetToSpreadsheetDefaults()">Restaurar Base Original da Planilha</button>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ====================================================================
+       MODAL 1: ADICIONAR / EDITAR VEÍCULO
+       ==================================================================== -->
+  <div class="modal-backdrop" id="modalVehicle">
+    <div class="modal-window">
+      <div class="modal-header">
+        <h3 class="modal-title" id="modalVehicleTitle">Cadastrar Novo Veículo</h3>
+        <button class="modal-close-btn" onclick="closeModal('modalVehicle')">&times;</button>
+      </div>
+      <form id="formVehicle" onsubmit="handleSaveVehicle(event)">
+        <input type="hidden" id="vehId" value="">
+        <div class="modal-body">
+          <div class="form-grid-3">
+            <div class="form-group">
+              <label for="vehMarca">Marca *</label>
+              <input type="text" id="vehMarca" class="input-control" required placeholder="Ex: Fiat, BMW, Honda">
+            </div>
+            <div class="form-group">
+              <label for="vehModelo">Modelo *</label>
+              <input type="text" id="vehModelo" class="input-control" required placeholder="Ex: Toro Endurance 2.0">
+            </div>
+            <div class="form-group">
+              <label for="vehAno">Ano Fabricação/Modelo *</label>
+              <input type="number" id="vehAno" class="input-control" required placeholder="2022" value="2022">
+            </div>
+          </div>
+
+          <div class="form-grid-3">
+            <div class="form-group">
+              <label for="vehPlaca">Placa *</label>
+              <input type="text" id="vehPlaca" class="input-control" required placeholder="ABC 1D23" style="text-transform: uppercase;">
+            </div>
+            <div class="form-group">
+              <label for="vehCor">Cor</label>
+              <input type="text" id="vehCor" class="input-control" placeholder="Prata, Branco, Preto">
+            </div>
+            <div class="form-group">
+              <label for="vehKm">Quilometragem (KM)</label>
+              <input type="number" id="vehKm" class="input-control" placeholder="45000">
+            </div>
+          </div>
+
+          <div class="form-grid-3">
+            <div class="form-group">
+              <label for="vehCombustivel">Combustível</label>
+              <select id="vehCombustivel" class="select-control">
+                <option value="Flex">Flex (Álcool/Gasolina)</option>
+                <option value="Gasolina">Gasolina</option>
+                <option value="Diesel">Diesel</option>
+                <option value="Elétrico">Elétrico</option>
+                <option value="Híbrido">Híbrido</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="vehCambio">Câmbio</label>
+              <select id="vehCambio" class="select-control">
+                <option value="Manual">Manual</option>
+                <option value="Automático">Automático</option>
+                <option value="CVT">CVT</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="vehSociedade">Sociedade / Parceiro</label>
+              <input type="text" id="vehSociedade" class="input-control" placeholder="Ex: Lagoa ou vazio">
+            </div>
+          </div>
+
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label for="vehAntigoDono">Antigo Dono / Fornecedor</label>
+              <input type="text" id="vehAntigoDono" class="input-control" placeholder="Ex: Uai Veículos, Nome">
+            </div>
+            <div class="form-group">
+              <label for="vehDataCompra">Data de Compra *</label>
+              <input type="date" id="vehDataCompra" class="input-control" required>
+            </div>
+          </div>
+
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label for="vehValorCompra">Valor de Compra (R$) *</label>
+              <input type="number" step="0.01" id="vehValorCompra" class="input-control" required placeholder="0.00">
+            </div>
+            <div class="form-group">
+              <label for="vehValorFipe">Valor FIPE de Referência (R$)</label>
+              <input type="number" step="0.01" id="vehValorFipe" class="input-control" placeholder="0.00">
+            </div>
+          </div>
+
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modalVehicle')">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Salvar Veículo</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ====================================================================
+       MODAL 2: REGISTRAR VENDA & CARNÊ
+       ==================================================================== -->
+  <div class="modal-backdrop" id="modalSell">
+    <div class="modal-window">
+      <div class="modal-header">
+        <h3 class="modal-title">Registrar Venda do Veículo</h3>
+        <button class="modal-close-btn" onclick="closeModal('modalSell')">&times;</button>
+      </div>
+      <form id="formSell" onsubmit="handleSaveSale(event)">
+        <input type="hidden" id="sellVehId" value="">
+        <div class="modal-body">
+          <div style="background: var(--bg-card); padding: 14px; border-radius: var(--radius-md); border: 1px solid var(--border-color); margin-bottom: 8px;">
+            <strong id="sellCarNameDisplay">Veículo</strong>
+            <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;" id="sellCarCustoDisplay">Custo Final: R$ 0,00</div>
+          </div>
+
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label for="sellData">Data da Venda *</label>
+              <input type="date" id="sellData" class="input-control" required>
+            </div>
+            <div class="form-group">
+              <label for="sellComprador">Nome do Comprador *</label>
+              <input type="text" id="sellComprador" class="input-control" required placeholder="Nome completo">
+            </div>
+          </div>
+
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label for="sellTelefone">Telefone / WhatsApp</label>
+              <input type="text" id="sellTelefone" class="input-control" placeholder="(19) 99999-9999">
+            </div>
+            <div class="form-group">
+              <label for="sellValor">Valor Total da Venda (R$) *</label>
+              <input type="number" step="0.01" id="sellValor" class="input-control" required placeholder="0.00" oninput="calculateSaleProfit()">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="sellTipo">Forma de Pagamento</label>
+            <select id="sellTipo" class="select-control" onchange="toggleInstallmentInputs(this.value)">
+              <option value="Parcelado">Parcelado (Entrada + Parcelas Mensais)</option>
+              <option value="À vista">À vista</option>
+            </select>
+          </div>
+
+          <div id="installmentFieldsBlock" class="form-grid-3">
+            <div class="form-group">
+              <label for="sellEntrada">Valor da Entrada (R$)</label>
+              <input type="number" step="0.01" id="sellEntrada" class="input-control" placeholder="0.00">
+            </div>
+            <div class="form-group">
+              <label for="sellNumParcelas">Nº de Parcelas</label>
+              <input type="number" id="sellNumParcelas" class="input-control" placeholder="Ex: 36, 40, 43" value="36">
+            </div>
+            <div class="form-group">
+              <label for="sellValorParcela">Valor da Parcela (R$)</label>
+              <input type="number" step="0.01" id="sellValorParcela" class="input-control" placeholder="Ex: 1000.00">
+            </div>
+          </div>
+
+          <div style="background: var(--success-light); border: 1px solid rgba(16, 185, 129, 0.3); padding: 14px; border-radius: var(--radius-md); display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-weight: 700; color: var(--success);">Lucro Estimado da Operação:</span>
+            <strong style="font-size: 1.25rem; color: var(--success);" id="sellLucroCalculado">R$ 0,00</strong>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modalSell')">Cancelar</button>
+          <button type="submit" class="btn btn-success">Concluir Venda</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ====================================================================
+       MODAL 3: LANÇAR DESPESA
+       ==================================================================== -->
+  <div class="modal-backdrop" id="modalExpense">
+    <div class="modal-window">
+      <div class="modal-header">
+        <h3 class="modal-title">Lançar Despesa de Veículo</h3>
+        <button class="modal-close-btn" onclick="closeModal('modalExpense')">&times;</button>
+      </div>
+      <form id="formExpense" onsubmit="handleSaveExpense(event)">
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="expCarSelect">Selecionar Veículo *</label>
+            <select id="expCarSelect" class="select-control" required></select>
+          </div>
+
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label for="expData">Data da Despesa *</label>
+              <input type="date" id="expData" class="input-control" required>
+            </div>
+            <div class="form-group">
+              <label for="expCategoria">Categoria *</label>
+              <select id="expCategoria" class="select-control" required>
+                <option value="Mecânica">Mecânica</option>
+                <option value="Estética">Estética / Higienização</option>
+                <option value="Peças e Acessórios">Peças e Acessórios</option>
+                <option value="Funilaria e Pintura">Funilaria e Pintura</option>
+                <option value="Pneus">Pneus</option>
+                <option value="Documentação">Documentação / Despachante</option>
+                <option value="Transporte e Guincho">Transporte e Guincho</option>
+                <option value="Comissão / Sociedade">Comissão / Sociedade (ex: Lagoa)</option>
+                <option value="Outros">Outras Despesas</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="expItem">Item / Descrição Detalhada *</label>
+            <input type="text" id="expItem" class="input-control" required placeholder="Ex: Higienização, Troca de bomba, Sensor de rotação">
+          </div>
+
+          <div class="form-group">
+            <label for="expValor">Valor (R$) *</label>
+            <input type="number" step="0.01" id="expValor" class="input-control" required placeholder="0.00">
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modalExpense')">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Salvar Despesa</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ====================================================================
+       MODAL 4: ANEXAR DOCUMENTO
+       ==================================================================== -->
+  <div class="modal-backdrop" id="modalDocument">
+    <div class="modal-window">
+      <div class="modal-header">
+        <h3 class="modal-title">Anexar Documento ou Laudo</h3>
+        <button class="modal-close-btn" onclick="closeModal('modalDocument')">&times;</button>
+      </div>
+      <form id="formDocument" onsubmit="handleSaveDocument(event)">
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="docCarSelect">Selecionar Veículo *</label>
+            <select id="docCarSelect" class="select-control" required></select>
+          </div>
+
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label for="docTipo">Tipo de Documento *</label>
+              <select id="docTipo" class="select-control" required>
+                <option value="CRLV">CRLV (Certificado de Registro)</option>
+                <option value="ATPV">ATPV (Autorização de Transferência)</option>
+                <option value="Laudo Cautelar">Laudo Cautelar / Perícia</option>
+                <option value="Laudo Transferência">Laudo de Transferência Detran</option>
+                <option value="Contrato">Contrato de Compra e Venda</option>
+                <option value="Nota Fiscal">Nota Fiscal / Recibo</option>
+                <option value="Fotos">Fotos / Galeria</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="docData">Data de Upload / Emissão</label>
+              <input type="date" id="docData" class="input-control">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="docLink">Link do Arquivo (Google Drive / OneDrive / URL) *</label>
+            <input type="text" id="docLink" class="input-control" required placeholder="https://drive.google.com/file/d/...">
+            <small style="color: var(--text-dim); margin-top: 4px;">Cole aqui o link de compartilhamento da pasta na nuvem ou nome do arquivo PDF local.</small>
+          </div>
+
+          <div class="form-group">
+            <label for="docObs">Observações</label>
+            <input type="text" id="docObs" class="input-control" placeholder="Ex: Laudo aprovado sem ressalvas">
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modalDocument')">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Salvar Documento</button>
+        </div>
+      </form>
+    </div>
+  <!-- ====================================================================
+       MODAL 5: AJUSTAR / EDITAR QUANTIDADE E VALOR DE PARCELAS
+       ==================================================================== -->
+  <div class="modal-backdrop" id="modalEditInstallments">
+    <div class="modal-window">
+      <div class="modal-header">
+        <h3 class="modal-title">Ajustar Quantidade e Valor de Parcelas</h3>
+        <button class="modal-close-btn" onclick="closeModal('modalEditInstallments')">&times;</button>
+      </div>
+      <form id="formEditInstallments" onsubmit="handleSaveEditInstallments(event)">
+        <input type="hidden" id="editInstVehId" value="">
+        <div class="modal-body">
+          <div style="background: var(--bg-card); padding: 14px; border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+            <strong id="editInstCarName">Veículo</strong>
+            <div style="font-size: 0.82rem; color: var(--text-muted); margin-top: 4px;" id="editInstCurrentPlan">
+              Plano atual: 0x de R$ 0,00 • Entrada: R$ 0,00
+            </div>
+          </div>
+
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label for="editInstNumParcelas">Quantidade Total de Parcelas *</label>
+              <input type="number" id="editInstNumParcelas" class="input-control" required min="1" max="120" oninput="recalcEditInstTotal()">
+            </div>
+            <div class="form-group">
+              <label for="editInstValorParcela">Valor de Cada Parcela (R$) *</label>
+              <input type="number" step="0.01" id="editInstValorParcela" class="input-control" required min="1" oninput="recalcEditInstTotal()">
+            </div>
+          </div>
+
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label for="editInstValorEntrada">Valor da Entrada (R$)</label>
+              <input type="number" step="0.01" id="editInstValorEntrada" class="input-control" oninput="recalcEditInstTotal()">
+            </div>
+            <div class="form-group">
+              <label for="editInstDataVencimento">Data Base / 1º Vencimento</label>
+              <input type="date" id="editInstDataVencimento" class="input-control">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="editInstModo">Como aplicar a alteração no carnê?</label>
+            <select id="editInstModo" class="select-control">
+              <option value="ajustar_pendentes">Manter parcelas já pagas e ajustar/gerar apenas as pendentes</option>
+              <option value="adicionar_ao_fim">Adicionar novas parcelas adicionais ao final do carnê</option>
+              <option value="redefinir_tudo">Redefinir todas as parcelas do zero</option>
+            </select>
+          </div>
+
+          <div style="background: var(--primary-light); border: 1px solid rgba(37, 99, 235, 0.3); padding: 14px; border-radius: var(--radius-md); display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-weight: 600; font-size: 0.88rem; color: var(--primary);">Novo Valor Total da Venda:</span>
+            <strong style="font-size: 1.25rem; color: var(--primary);" id="editInstTotalCalculado">R$ 0,00</strong>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modalEditInstallments')">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Salvar Alterações</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ====================================================================
+       MODAL 6: QUITAÇÃO DE PARCELAS / REGISTRO DE PAGAMENTO
+       ==================================================================== -->
+  <div class="modal-backdrop" id="modalSettlement">
+    <div class="modal-window">
+      <div class="modal-header">
+        <h3 class="modal-title">💰 Quitação de Parcelas / Baixar Pagamento</h3>
+        <button class="modal-close-btn" onclick="closeModal('modalSettlement')">&times;</button>
+      </div>
+      <form id="formSettlement" onsubmit="handleSaveSettlement(event)">
+        <input type="hidden" id="settleVehId" value="">
+        <div class="modal-body">
+
+          <!-- Seleção de Veículo (visível sempre para troca rápida ou quando chamado do menu geral) -->
+          <div class="form-group" id="settleVehSelectGroup">
+            <label for="settleVehSelect">Veículo Financiado *</label>
+            <select id="settleVehSelect" class="select-control" onchange="onSettleCarSelectChange(this.value)">
+              <!-- Preenchido dinamicamente via JS -->
+            </select>
+          </div>
+
+          <!-- Card Resumo do Financiamento -->
+          <div style="background: var(--bg-card); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;">
+              <div>
+                <strong id="settleCarName" style="font-size: 1.05rem;">Veículo</strong>
+                <div id="settleBuyerInfo" style="font-size: 0.82rem; color: var(--text-dim); margin-top: 2px;">Comprador</div>
+              </div>
+              <span class="status-pill upcoming" id="settlePendingCount">0 parcelas em aberto</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px; padding-top: 8px; border-top: 1px solid var(--border-color); font-size: 0.9rem;">
+              <span style="color: var(--text-muted);">Saldo Devedor em Aberto:</span>
+              <strong style="font-size: 1.25rem; color: var(--warning);" id="settleOpenBalance">R$ 0,00</strong>
+            </div>
+          </div>
+
+          <!-- Modalidade de Quitação -->
+          <div class="form-group">
+            <label for="settleTipo">Modalidade de Quitação *</label>
+            <select id="settleTipo" class="select-control" onchange="onSettleTipoChange(this.value)">
+              <option value="total">Quitação Total (Liquidar 100% das parcelas em aberto)</option>
+              <option value="individual">Quitar Parcela Específica (Baixar 1 parcela informando valor)</option>
+              <option value="parcial_parcelas">Quitar Múltiplas Parcelas (por quantidade)</option>
+              <option value="parcial_valor">Amortização por Valor (Abater valor do saldo)</option>
+            </select>
+          </div>
+
+          <!-- Bloco: Parcela Específica (quando tipo = 'individual') -->
+          <div class="form-group" id="settleParcelaBlock" style="display: none;">
+            <label for="settleParcelaSelect">Qual Parcela Deseja Quitar? *</label>
+            <select id="settleParcelaSelect" class="select-control" onchange="onSettleParcelaSelectChange(this.value)">
+              <!-- Preenchido dinamicamente -->
+            </select>
+          </div>
+
+          <!-- Bloco: Quantidade de Parcelas (quando tipo = 'parcial_parcelas') -->
+          <div class="form-group" id="settleQtdBlock" style="display: none;">
+            <label for="settleQtdParcelas">Quantas Parcelas Quitar Agora? *</label>
+            <input type="number" id="settleQtdParcelas" class="input-control" min="1" value="1" oninput="onSettleQtdChange()">
+            <small style="color: var(--text-dim);">Serão baixadas as próximas parcelas em aberto por ordem cronológica.</small>
+          </div>
+
+          <!-- CAMPO PRINCIPAL: VALOR A SER PAGO (R$) -->
+          <div class="form-group" style="background: rgba(16, 185, 129, 0.08); padding: 14px; border-radius: var(--radius-md); border: 1px solid rgba(16, 185, 129, 0.25);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <label for="settleValorPago" style="margin-bottom: 0; font-weight: 700; color: var(--success); font-size: 0.95rem;">
+                Valor a ser Pago (R$) *
+              </label>
+              <span id="settleNominalTag" style="font-size: 0.78rem; color: var(--text-dim);">Nominal: R$ 0,00</span>
+            </div>
+            <input type="number" step="0.01" id="settleValorPago" class="input-control" required placeholder="0.00" style="font-size: 1.25rem; font-weight: 700; color: var(--success);" oninput="recalcSettleSummary()">
+            <small id="settleValorPagoHint" style="color: var(--text-muted); display: block; margin-top: 4px;">
+              Valor que será efetivamente recebido/baixado. Você pode conceder desconto para quitação à vista.
+            </small>
+          </div>
+
+          <!-- Grid: Data do Pagamento & Forma de Pagamento -->
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label for="settleDataPagamento">Data do Pagamento *</label>
+              <input type="date" id="settleDataPagamento" class="input-control" required>
+            </div>
+            <div class="form-group">
+              <label for="settleFormaPagamento">Forma de Pagamento *</label>
+              <select id="settleFormaPagamento" class="select-control">
+                <option value="PIX">PIX</option>
+                <option value="Transferência Bancária / TED">Transferência Bancária / TED</option>
+                <option value="Dinheiro">Dinheiro em Espécie</option>
+                <option value="Cartão de Débito">Cartão de Débito</option>
+                <option value="Cartão de Crédito">Cartão de Crédito</option>
+                <option value="Boleto">Boleto Bancário</option>
+                <option value="Cheque">Cheque</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Observação / Comprovante -->
+          <div class="form-group">
+            <label for="settleObs">Observação / Comprovante</label>
+            <input type="text" id="settleObs" class="input-control" placeholder="Ex: Quitado com desconto acordado, recibo emitido">
+          </div>
+
+          <!-- Resumo da Operação -->
+          <div id="settleSummaryNotice" style="background: var(--bg-card); padding: 12px 14px; border-radius: var(--radius-sm); border-left: 3px solid var(--primary); font-size: 0.85rem; color: var(--text-muted);">
+            Carregando resumo da operação...
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modalSettlement')">Cancelar</button>
+          <button type="submit" class="btn btn-success" id="btnConfirmSettle">Confirmar Quitação</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- TOAST DE NOTIFICAÇÃO -->
+  <div id="toastNotification" style="position: fixed; bottom: 24px; right: 24px; background: var(--bg-surface); border: 1px solid var(--border-color); border-left: 4px solid var(--primary); padding: 14px 20px; border-radius: var(--radius-md); box-shadow: var(--shadow-lg); display: none; align-items: center; gap: 12px; z-index: 999;">
+    <span id="toastMsg" style="font-size: 0.9rem; font-weight: 600;">Ação realizada com sucesso!</span>
+  </div>
+
+  <!-- SCRIPTS DA APLICAÇÃO -->
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
