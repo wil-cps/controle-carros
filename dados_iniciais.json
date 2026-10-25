@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 ﻿{
     "veiculos":  [
                      {
@@ -642,3 +643,649 @@
                        }
                    ]
 }
+=======
+﻿{
+    "veiculos":  [
+                     {
+                         "id":  1,
+                         "dataCompra":  "2026-09-03",
+                         "marca":  "Fiat",
+                         "modelo":  "Toro Endurance 2.0",
+                         "ano":  2022,
+                         "placa":  "RTM 9G72",
+                         "sociedade":  null,
+                         "antigoDono":  "Uai Veiculos",
+                         "valorCompra":  74900,
+                         "despesasTotal":  10200,
+                         "custoFinal":  85100,
+                         "valorFipe":  101000,
+                         "dataVenda":  "2026-09-24",
+                         "comprador":  [
+                                           [
+
+                                           ]
+                                       ],
+                         "valorVenda":  148500,
+                         "parcelamento":  "Parcelado",
+                         "valorEntrada":  41000,
+                         "numParcelas":  43,
+                         "valorParcela":  2500,
+                         "lucro":  63400,
+                         "status":  "Vendido"
+                     },
+                     {
+                         "id":  2,
+                         "dataCompra":  "2026-09-03",
+                         "marca":  "Renault",
+                         "modelo":  "Sandeiro 1.6 8v",
+                         "ano":  2014,
+                         "placa":  "EZP6E22",
+                         "sociedade":  null,
+                         "antigoDono":  "Uai Veiculos",
+                         "valorCompra":  16900,
+                         "despesasTotal":  1035,
+                         "custoFinal":  17935,
+                         "valorFipe":  32000,
+                         "dataVenda":  "2026-09-25",
+                         "comprador":  "Cristina",
+                         "valorVenda":  44000,
+                         "parcelamento":  "Parcelado",
+                         "valorEntrada":  14000,
+                         "numParcelas":  30,
+                         "valorParcela":  1000,
+                         "lucro":  26065,
+                         "status":  "Vendido"
+                     },
+                     {
+                         "id":  3,
+                         "dataCompra":  "2026-09-08",
+                         "marca":  "Hyundai",
+                         "modelo":  "HB20",
+                         "ano":  2015,
+                         "placa":  "FXL5I69",
+                         "sociedade":  null,
+                         "antigoDono":  "Suellin",
+                         "valorCompra":  33000,
+                         "despesasTotal":  7251.84,
+                         "custoFinal":  40251.84,
+                         "valorFipe":  50000,
+                         "dataVenda":  "2026-10-02",
+                         "comprador":  "NELSON",
+                         "valorVenda":  78000,
+                         "parcelamento":  "Parcelado",
+                         "valorEntrada":  18000,
+                         "numParcelas":  40,
+                         "valorParcela":  1500,
+                         "lucro":  37748.16,
+                         "status":  "Vendido"
+                     },
+                     {
+                         "id":  4,
+                         "dataCompra":  "2026-09-18",
+                         "marca":  "BMW",
+                         "modelo":  "X1",
+                         "ano":  2013,
+                         "placa":  "EQN1J10",
+                         "sociedade":  null,
+                         "antigoDono":  "Giuseppe Maset",
+                         "valorCompra":  33500,
+                         "despesasTotal":  3252.96,
+                         "custoFinal":  36752.96,
+                         "valorFipe":  74000,
+                         "dataVenda":  "",
+                         "comprador":  [
+                                           [
+
+                                           ]
+                                       ],
+                         "valorVenda":  0,
+                         "parcelamento":  null,
+                         "valorEntrada":  0,
+                         "numParcelas":  0,
+                         "valorParcela":  0,
+                         "lucro":  0,
+                         "status":  "Em estoque"
+                     },
+                     {
+                         "id":  5,
+                         "dataCompra":  "2026-09-29",
+                         "marca":  "GOL",
+                         "modelo":  [
+                                        [
+
+                                        ]
+                                    ],
+                         "ano":  2012,
+                         "placa":  "GTO7G79",
+                         "sociedade":  "Lagoa",
+                         "antigoDono":  "Uai Veículos",
+                         "valorCompra":  19900,
+                         "despesasTotal":  200,
+                         "custoFinal":  20100,
+                         "valorFipe":  28990,
+                         "dataVenda":  "",
+                         "comprador":  [
+                                           [
+
+                                           ]
+                                       ],
+                         "valorVenda":  0,
+                         "parcelamento":  null,
+                         "valorEntrada":  0,
+                         "numParcelas":  0,
+                         "valorParcela":  0,
+                         "lucro":  0,
+                         "status":  "Em estoque"
+                     },
+                     {
+                         "id":  6,
+                         "dataCompra":  "2026-09-29",
+                         "marca":  "ONIX",
+                         "modelo":  "Chevrolet Onix Lt 1.0 Prata Flex",
+                         "ano":  2019,
+                         "placa":  "QQD9C35",
+                         "sociedade":  "Lagoa",
+                         "antigoDono":  "Uai Veículos",
+                         "valorCompra":  34900,
+                         "despesasTotal":  2322,
+                         "custoFinal":  37222,
+                         "valorFipe":  53937,
+                         "dataVenda":  "",
+                         "comprador":  [
+                                           [
+
+                                           ]
+                                       ],
+                         "valorVenda":  0,
+                         "parcelamento":  null,
+                         "valorEntrada":  0,
+                         "numParcelas":  0,
+                         "valorParcela":  0,
+                         "lucro":  0,
+                         "status":  "Em estoque"
+                     },
+                     {
+                         "id":  7,
+                         "dataCompra":  "2026-10-02",
+                         "marca":  "ASTRA",
+                         "modelo":  "GM/ASTRA HB 4P ADVANTAGE",
+                         "ano":  2008,
+                         "placa":  "EBM7E53",
+                         "sociedade":  null,
+                         "antigoDono":  "NELSON DE SOUZA SILVA",
+                         "valorCompra":  18000,
+                         "despesasTotal":  0,
+                         "custoFinal":  18000,
+                         "valorFipe":  29900,
+                         "dataVenda":  "2026-10-03",
+                         "comprador":  [
+                                           [
+
+                                           ]
+                                       ],
+                         "valorVenda":  47000,
+                         "parcelamento":  "Parcelado",
+                         "valorEntrada":  11000,
+                         "numParcelas":  36,
+                         "valorParcela":  1000,
+                         "lucro":  29000,
+                         "status":  "Vendido"
+                     },
+                     {
+                         "id":  8,
+                         "dataCompra":  "2026-10-03",
+                         "marca":  "TWISTER",
+                         "modelo":  "HONDA/CB 250F TWISTER",
+                         "ano":  2018,
+                         "placa":  "QIU0B54",
+                         "sociedade":  "Lagoa",
+                         "antigoDono":  "DIOGENES DE SOUZA ARAUJO",
+                         "valorCompra":  11000,
+                         "despesasTotal":  0,
+                         "custoFinal":  11000,
+                         "valorFipe":  16900,
+                         "dataVenda":  "",
+                         "comprador":  null,
+                         "valorVenda":  0,
+                         "parcelamento":  null,
+                         "valorEntrada":  0,
+                         "numParcelas":  0,
+                         "valorParcela":  0,
+                         "lucro":  0,
+                         "status":  "Em estoque"
+                     }
+                 ],
+    "despesas":  [
+                     {
+                         "id":  1,
+                         "veiculoId":  1,
+                         "placa":  "RTM 9G72",
+                         "modelo":  "Toro Endurance 2.0",
+                         "data":  "2026-09-10",
+                         "item":  "Remap Ney",
+                         "categoria":  "MecÃ¢nica",
+                         "valor":  2000
+                     },
+                     {
+                         "id":  2,
+                         "veiculoId":  1,
+                         "placa":  "RTM 9G72",
+                         "modelo":  "Toro Endurance 2.0",
+                         "data":  "2026-09-10",
+                         "item":  "Reservatório agua",
+                         "categoria":  "PeÃ§as e AcessÃ³rios",
+                         "valor":  100
+                     },
+                     {
+                         "id":  3,
+                         "veiculoId":  1,
+                         "placa":  "RTM 9G72",
+                         "modelo":  "Toro Endurance 2.0",
+                         "data":  "2026-09-10",
+                         "item":  "Reparo da bomba de vacuo",
+                         "categoria":  "MecÃ¢nica",
+                         "valor":  100
+                     },
+                     {
+                         "id":  4,
+                         "veiculoId":  1,
+                         "placa":  "RTM 9G72",
+                         "modelo":  "Toro Endurance 2.0",
+                         "data":  "2026-09-15",
+                         "item":  "Higienização",
+                         "categoria":  "EstÃ©tica",
+                         "valor":  500
+                     },
+                     {
+                         "id":  5,
+                         "veiculoId":  1,
+                         "placa":  "RTM 9G72",
+                         "modelo":  "Toro Endurance 2.0",
+                         "data":  "2026-09-25",
+                         "item":  "Comissão para Lagoa",
+                         "categoria":  "ComissÃ£o / Sociedade",
+                         "valor":  5000
+                     },
+                     {
+                         "id":  6,
+                         "veiculoId":  1,
+                         "placa":  "RTM 9G72",
+                         "modelo":  "Toro Endurance 2.0",
+                         "data":  "2026-10-01",
+                         "item":  [
+                                      [
+
+                                      ]
+                                  ],
+                         "categoria":  "Outros",
+                         "valor":  2500
+                     },
+                     {
+                         "id":  7,
+                         "veiculoId":  2,
+                         "placa":  "EZP 6E22",
+                         "modelo":  "Sandeiro 1.6 8v",
+                         "data":  "2026-09-10",
+                         "item":  "Pçs p retífica do cabeçote",
+                         "categoria":  "Outros",
+                         "valor":  250
+                     },
+                     {
+                         "id":  8,
+                         "veiculoId":  2,
+                         "placa":  "EZP 6E22",
+                         "modelo":  "Sandeiro 1.6 8v",
+                         "data":  "2026-09-10",
+                         "item":  "Higienização",
+                         "categoria":  "EstÃ©tica",
+                         "valor":  500
+                     },
+                     {
+                         "id":  9,
+                         "veiculoId":  2,
+                         "placa":  "EZP 6E22",
+                         "modelo":  "Sandeiro 1.6 8v",
+                         "data":  "2026-09-15",
+                         "item":  "Pneus",
+                         "categoria":  "PeÃ§as e AcessÃ³rios",
+                         "valor":  200
+                     },
+                     {
+                         "id":  10,
+                         "veiculoId":  2,
+                         "placa":  "EZP 6E22",
+                         "modelo":  "Sandeiro 1.6 8v",
+                         "data":  "2026-09-22",
+                         "item":  "Cabo de vela",
+                         "categoria":  "MecÃ¢nica",
+                         "valor":  85
+                     },
+                     {
+                         "id":  11,
+                         "veiculoId":  3,
+                         "placa":  "FXL5I69",
+                         "modelo":  "HB20",
+                         "data":  "2026-09-15",
+                         "item":  "FUNILARIA JOEL",
+                         "categoria":  "Funilaria e Pintura",
+                         "valor":  1500
+                     },
+                     {
+                         "id":  12,
+                         "veiculoId":  3,
+                         "placa":  "FXL5I69",
+                         "modelo":  "HB20",
+                         "data":  "2026-09-26",
+                         "item":  "PATRIKA VISTORIA",
+                         "categoria":  "DocumentaÃ§Ã£o",
+                         "valor":  220
+                     },
+                     {
+                         "id":  13,
+                         "veiculoId":  3,
+                         "placa":  "FXL5I69",
+                         "modelo":  "HB20",
+                         "data":  "2026-09-26",
+                         "item":  "KEVIN HIGIENIZAÇÃO",
+                         "categoria":  "EstÃ©tica",
+                         "valor":  500
+                     },
+                     {
+                         "id":  14,
+                         "veiculoId":  3,
+                         "placa":  "FXL5I69",
+                         "modelo":  "HB20",
+                         "data":  "2026-09-28",
+                         "item":  "PNEUS",
+                         "categoria":  "PeÃ§as e AcessÃ³rios",
+                         "valor":  260
+                     },
+                     {
+                         "id":  15,
+                         "veiculoId":  3,
+                         "placa":  "FXL5I69",
+                         "modelo":  "HB20",
+                         "data":  "2026-09-29",
+                         "item":  "Documento",
+                         "categoria":  "DocumentaÃ§Ã£o",
+                         "valor":  621
+                     },
+                     {
+                         "id":  16,
+                         "veiculoId":  3,
+                         "placa":  "FXL5I69",
+                         "modelo":  "HB20",
+                         "data":  "2026-10-01",
+                         "item":  "Calotas",
+                         "categoria":  "PeÃ§as e AcessÃ³rios",
+                         "valor":  45.8
+                     },
+                     {
+                         "id":  17,
+                         "veiculoId":  3,
+                         "placa":  "FXL5I69",
+                         "modelo":  "HB20",
+                         "data":  "2026-10-01",
+                         "item":  "Pneus/conserto",
+                         "categoria":  "PeÃ§as e AcessÃ³rios",
+                         "valor":  70
+                     },
+                     {
+                         "id":  18,
+                         "veiculoId":  3,
+                         "placa":  "FXL5I69",
+                         "modelo":  "HB20",
+                         "data":  "2026-10-01",
+                         "item":  "Rele/lampada",
+                         "categoria":  "MecÃ¢nica",
+                         "valor":  22
+                     },
+                     {
+                         "id":  19,
+                         "veiculoId":  3,
+                         "placa":  "FXL5I69",
+                         "modelo":  "HB20",
+                         "data":  "2026-10-05",
+                         "item":  "Comissão para Lagoa",
+                         "categoria":  "ComissÃ£o / Sociedade",
+                         "valor":  3845
+                     },
+                     {
+                         "id":  20,
+                         "veiculoId":  3,
+                         "placa":  "FXL5I69",
+                         "modelo":  "HB20",
+                         "data":  "2026-10-05",
+                         "item":  "SENSOR ROTAÇÃO",
+                         "categoria":  "MecÃ¢nica",
+                         "valor":  71
+                     },
+                     {
+                         "id":  21,
+                         "veiculoId":  3,
+                         "placa":  "FXL5I69",
+                         "modelo":  "HB20",
+                         "data":  "2026-10-05",
+                         "item":  [
+                                      [
+
+                                      ]
+                                  ],
+                         "categoria":  "Outros",
+                         "valor":  97.04
+                     },
+                     {
+                         "id":  22,
+                         "veiculoId":  4,
+                         "placa":  "EQN1J10",
+                         "modelo":  "X1",
+                         "data":  "2026-09-17",
+                         "item":  "Guincho e viagem (Pirassununga)",
+                         "categoria":  "Transporte e Guincho",
+                         "valor":  1000
+                     },
+                     {
+                         "id":  23,
+                         "veiculoId":  4,
+                         "placa":  "EQN1J10",
+                         "modelo":  "X1",
+                         "data":  "2026-09-23",
+                         "item":  "Filtro lub, anel pistão, jogo de juntas, filtro de ar e biela",
+                         "categoria":  "PeÃ§as e AcessÃ³rios",
+                         "valor":  1362.96
+                     },
+                     {
+                         "id":  24,
+                         "veiculoId":  4,
+                         "placa":  "EQN1J10",
+                         "modelo":  "X1",
+                         "data":  "2026-09-23",
+                         "item":  "Bronzina",
+                         "categoria":  "PeÃ§as e AcessÃ³rios",
+                         "valor":  245
+                     },
+                     {
+                         "id":  25,
+                         "veiculoId":  4,
+                         "placa":  "EQN1J10",
+                         "modelo":  "X1",
+                         "data":  "2026-10-01",
+                         "item":  "Peças",
+                         "categoria":  "Outros",
+                         "valor":  245
+                     },
+                     {
+                         "id":  26,
+                         "veiculoId":  4,
+                         "placa":  "EQN1J10",
+                         "modelo":  "X1",
+                         "data":  "2026-10-04",
+                         "item":  [
+                                      [
+
+                                      ]
+                                  ],
+                         "categoria":  "Outros",
+                         "valor":  400
+                     },
+                     {
+                         "id":  27,
+                         "veiculoId":  5,
+                         "placa":  "GTO7G79",
+                         "modelo":  "GOL",
+                         "data":  "2026-09-30",
+                         "item":  "PNEU",
+                         "categoria":  "PeÃ§as e AcessÃ³rios",
+                         "valor":  200
+                     },
+                     {
+                         "id":  28,
+                         "veiculoId":  6,
+                         "placa":  "QQD9C35",
+                         "modelo":  [
+                                        [
+
+                                        ]
+                                    ],
+                         "data":  "2026-09-30",
+                         "item":  "GUINCHO TORTO",
+                         "categoria":  "Transporte e Guincho",
+                         "valor":  1000
+                     },
+                     {
+                         "id":  29,
+                         "veiculoId":  6,
+                         "placa":  "QQD9C35",
+                         "modelo":  [
+                                        [
+
+                                        ]
+                                    ],
+                         "data":  "2026-10-01",
+                         "item":  "Chave",
+                         "categoria":  "PeÃ§as e AcessÃ³rios",
+                         "valor":  350
+                     },
+                     {
+                         "id":  30,
+                         "veiculoId":  6,
+                         "placa":  "QQD9C35",
+                         "modelo":  [
+                                        [
+
+                                        ]
+                                    ],
+                         "data":  "2026-10-02",
+                         "item":  "Módulo",
+                         "categoria":  "Outros",
+                         "valor":  300
+                     },
+                     {
+                         "id":  31,
+                         "veiculoId":  6,
+                         "placa":  "QQD9C35",
+                         "modelo":  [
+                                        [
+
+                                        ]
+                                    ],
+                         "data":  "2026-10-02",
+                         "item":  [
+                                      [
+
+                                      ]
+                                  ],
+                         "categoria":  "Outros",
+                         "valor":  39
+                     },
+                     {
+                         "id":  32,
+                         "veiculoId":  6,
+                         "placa":  "QQD9C35",
+                         "modelo":  [
+                                        [
+
+                                        ]
+                                    ],
+                         "data":  "2026-10-06",
+                         "item":  "Para-choque Diant/Tras",
+                         "categoria":  "PeÃ§as e AcessÃ³rios",
+                         "valor":  633
+                     }
+                 ],
+    "documentos":  [
+                       {
+                           "id":  1,
+                           "veiculoId":  1,
+                           "placa":  "RTM 9G72",
+                           "modelo":  "Toro Endurance 2.1",
+                           "tipo":  "CRLV",
+                           "link":  "https://drive.google.com/file/d/1W1LHjCCUqtgjcn_nkKkGcJwBy6uliQeU/view?usp=drive_link",
+                           "dataUpload":  "2026-09-14"
+                       },
+                       {
+                           "id":  2,
+                           "veiculoId":  2,
+                           "placa":  "EZP6E22",
+                           "modelo":  "Sandeiro 1.6 8v",
+                           "tipo":  "ATPV",
+                           "link":  "ATPV SANDERO.pdf",
+                           "dataUpload":  "2026-09-14"
+                       },
+                       {
+                           "id":  3,
+                           "veiculoId":  3,
+                           "placa":  "FXL5I69",
+                           "modelo":  "HB20",
+                           "tipo":  "Laudo Cautelar",
+                           "link":  "https://drive.google.com/file/d/1EuWfmyyBK2JMQDXojVsm5M0HJX-gCQan/view?usp=drive_linkk",
+                           "dataUpload":  "2026-09-26"
+                       },
+                       {
+                           "id":  4,
+                           "veiculoId":  3,
+                           "placa":  "FXL5I69",
+                           "modelo":  "HB20",
+                           "tipo":  "Laudo Transferência",
+                           "link":  "https://drive.google.com/file/d/1vVoZDFbQj7h3oyae4x3ye-jgX2LvBhBv/view?usp=drive_link",
+                           "dataUpload":  "2026-09-26"
+                       },
+                       {
+                           "id":  5,
+                           "veiculoId":  3,
+                           "placa":  "FXL5I69",
+                           "modelo":  "HB20",
+                           "tipo":  "CRLV",
+                           "link":  "https://drive.google.com/file/d/1T2G3FYgpwWVhxBbt29dgI-Hy7DUwcWt7/view?usp=drive_link",
+                           "dataUpload":  "2026-10-01"
+                       },
+                       {
+                           "id":  6,
+                           "veiculoId":  4,
+                           "placa":  "EQN1J10",
+                           "modelo":  "X1",
+                           "tipo":  "CRLV",
+                           "link":  "https://drive.google.com/file/d/1HGKEV554gyggUrUU-OG16qcOXKPwavQu/view?usp=drive_link",
+                           "dataUpload":  "2026-09-17"
+                       },
+                       {
+                           "id":  7,
+                           "veiculoId":  7,
+                           "placa":  "EBM7E53",
+                           "modelo":  "ASTRA",
+                           "tipo":  "CRLV",
+                           "link":  "https://drive.google.com/file/d/1NDPPjG-anPYcLCGk_HAXp52tnBf6O_UG/view?usp=drive_link",
+                           "dataUpload":  "2026-10-04"
+                       },
+                       {
+                           "id":  8,
+                           "veiculoId":  8,
+                           "placa":  "QIU0B54",
+                           "modelo":  "TWISTER",
+                           "tipo":  "CRLV",
+                           "link":  "https://drive.google.com/file/d/1AtxRp-ZtSHiyDiuAWOKBwtAYPN56oLaC/view?usp=drive_link",
+                           "dataUpload":  "2026-10-04"
+                       }
+                   ]
+}
+>>>>>>> 97c030b8166ce1c59b60f075576dc04c2ccead84
