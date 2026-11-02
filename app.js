@@ -33,6 +33,111 @@ let chartLucroInstance = null;
 let chartCategoriasInstance = null;
 
 // ============================================================================
+// REPOSITÓRIO DIGITAL DE ARQUIVOS E FOTOS (INDEXEDDB STORAGE ENGINE)
+// ============================================================================
+const AppFileRepo = {
+  dbName: 'AutoManageRepoDB_v1',
+  storeName: 'arquivos',
+  db: null,
+
+  async init() {
+    return new Promise((resolve) => {
+      try {
+        const req = indexedDB.open(this.dbName, 1);
+        req.onupgradeneeded = (e) => {
+          const database = e.target.result;
+          if (!database.objectStoreNames.contains(this.storeName)) {
+            database.createObjectStore(this.storeName, { keyPath: 'id' });
+          }
+        };
+        req.onsuccess = (e) => {
+          this.db = e.target.result;
+          resolve(true);
+        };
+        req.onerror = () => {
+          console.warn('IndexedDB indisponível, usando fallback em memória.');
+          resolve(false);
+        };
+      } catch (err) {
+        console.warn('Erro ao abrir IndexedDB:', err);
+        resolve(false);
+      }
+    });
+  },
+
+  async salvar(id, fileData) {
+    if (!this.db) await this.init();
+    if (!this.db) return false;
+    return new Promise((resolve) => {
+      try {
+        const tx = this.db.transaction([this.storeName], 'readwrite');
+        const store = tx.objectStore(this.storeName);
+        store.put({ id: Number(id), ...fileData });
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => resolve(false);
+      } catch (e) {
+        resolve(false);
+      }
+    });
+  },
+
+  async obter(id) {
+    if (!this.db) await this.init();
+    if (!this.db) return null;
+    return new Promise((resolve) => {
+      try {
+        const tx = this.db.transaction([this.storeName], 'readonly');
+        const store = tx.objectStore(this.storeName);
+        const req = store.get(Number(id));
+        req.onsuccess = (e) => resolve(e.target.result || null);
+        req.onerror = () => resolve(null);
+      } catch (e) {
+        resolve(null);
+      }
+    });
+  },
+
+  async excluir(id) {
+    if (!this.db) await this.init();
+    if (!this.db) return false;
+    return new Promise((resolve) => {
+      try {
+        const tx = this.db.transaction([this.storeName], 'readwrite');
+        const store = tx.objectStore(this.storeName);
+        store.delete(Number(id));
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => resolve(false);
+      } catch (e) {
+        resolve(false);
+      }
+    });
+  },
+
+  async calcularTotalBytes() {
+    if (!this.db) await this.init();
+    if (!this.db) return 0;
+    return new Promise((resolve) => {
+      try {
+        const tx = this.db.transaction([this.storeName], 'readonly');
+        const store = tx.objectStore(this.storeName);
+        const req = store.getAll();
+        req.onsuccess = (e) => {
+          const list = e.target.result || [];
+          const total = list.reduce((acc, item) => acc + (Number(item.tamanhoBytes) || (item.dataBase64 ? Math.round(item.dataBase64.length * 0.75) : 0)), 0);
+          resolve(total);
+        };
+        req.onerror = () => resolve(0);
+      } catch (e) {
+        resolve(0);
+      }
+    });
+  }
+};
+
+let cameraStream = null;
+let currentCameraFacing = 'environment'; // 'environment' (traseira) ou 'user' (frontal)
+
+// ============================================================================
 // INICIALIZAÇÃO
 // ============================================================================
 document.addEventListener('DOMContentLoaded', () => {
@@ -99,6 +204,8 @@ function resetToSpreadsheetDefaults() {
 }
 
 function initApp() {
+  AppFileRepo.init();
+  setupRepoDropzoneEvents();
   ensureAllInstallments();
   populateFilterSelects();
   updateCalculations();
@@ -125,6 +232,14 @@ function formatDate(dateStr) {
     return `${parts[2]}/${parts[1]}/${parts[0]}`;
   }
   return dateStr;
+}
+
+function formatBytes(bytes) {
+  const num = Number(bytes) || 0;
+  if (num === 0) return '0 KB';
+  if (num < 1024) return `${num} B`;
+  if (num < 1024 * 1024) return `${(num / 1024).toFixed(1)} KB`;
+  return `${(num / (1024 * 1024)).toFixed(2)} MB`;
 }
 
 function showToast(message) {
@@ -438,7 +553,10 @@ function getFilteredVehicles() {
         (v.marca || '').toLowerCase().includes(searchTerm) ||
         (v.placa || '').toLowerCase().includes(searchTerm) ||
         (v.comprador || '').toLowerCase().includes(searchTerm) ||
-        (v.antigoDono || '').toLowerCase().includes(searchTerm);
+        (v.antigoDono || '').toLowerCase().includes(searchTerm) ||
+        (v.renavam || '').toLowerCase().includes(searchTerm) ||
+        (v.chassi || v.chassis || '').toLowerCase().includes(searchTerm) ||
+        (v.observacoes || '').toLowerCase().includes(searchTerm);
       if (!match) return false;
     }
 
@@ -613,6 +731,23 @@ function renderVehicleDetail(carId) {
   document.getElementById('detailSpecCombustivel').textContent = car.combustivel || 'Flex';
   document.getElementById('detailSpecSociedade').textContent = car.sociedade ? `Sociedade ${car.sociedade}` : 'Próprio';
 
+  const specRenavam = document.getElementById('detailSpecRenavam');
+  if (specRenavam) specRenavam.textContent = car.renavam || '-';
+
+  const specChassi = document.getElementById('detailSpecChassi');
+  if (specChassi) specChassi.textContent = car.chassi || car.chassis || '-';
+
+  const obsBox = document.getElementById('detailObsBox');
+  const specObs = document.getElementById('detailSpecObs');
+  if (obsBox && specObs) {
+    if (car.observacoes && car.observacoes.trim()) {
+      specObs.textContent = car.observacoes.trim();
+      obsBox.style.display = 'block';
+    } else {
+      obsBox.style.display = 'none';
+    }
+  }
+
   document.getElementById('detailFinCompra').textContent = formatMoney(car.valorCompra);
   document.getElementById('detailFinDespesas').textContent = formatMoney(car.despesasTotal);
   document.getElementById('detailFinCustoFinal').textContent = formatMoney(car.custoFinal);
@@ -628,10 +763,14 @@ function renderVehicleDetail(carId) {
     document.getElementById('detailFinVenda').textContent = formatMoney(car.valorVenda);
     document.getElementById('detailFinLucro').textContent = formatMoney(car.lucro);
     btnSell.style.display = 'none';
+    const btnRevert = document.getElementById('btnRevertSaleAction');
+    if (btnRevert) btnRevert.style.display = 'inline-flex';
   } else {
     vendaRow.style.display = 'none';
     lucroRow.style.display = 'none';
     btnSell.style.display = 'inline-flex';
+    const btnRevert = document.getElementById('btnRevertSaleAction');
+    if (btnRevert) btnRevert.style.display = 'none';
   }
 
   // Preencher Despesas Vinculadas
@@ -890,79 +1029,315 @@ function deleteExpense(expId) {
 }
 
 // ============================================================================
-// DOCUMENTOS VIEW (DOCUMENTS)
+// REPOSITÓRIO DIGITAL DE DOCUMENTOS & FOTOS
 // ============================================================================
-function renderDocumentsGrid() {
+async function renderDocumentsGrid() {
   const vehFilter = document.getElementById('filterDocVehicle') ? document.getElementById('filterDocVehicle').value : 'todos';
   const typeFilter = document.getElementById('filterDocType') ? document.getElementById('filterDocType').value : 'todos';
+  const originFilter = document.getElementById('filterDocOrigin') ? document.getElementById('filterDocOrigin').value : 'todos';
 
   let list = appData.documentos;
-  if (vehFilter !== 'todos') list = list.filter(d => Number(d.veiculoId) === Number(vehFilter));
-  if (typeFilter !== 'todos') list = list.filter(d => d.tipo === typeFilter);
 
-  const container = document.getElementById('documentsGridContainer');
-  if (!container) return;
-
-  if (list.length === 0) {
-    container.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--text-dim);">Nenhum documento encontrado.</div>';
-    return;
+  if (vehFilter !== 'todos') {
+    list = list.filter(d => Number(d.veiculoId) === Number(vehFilter));
+  }
+  if (typeFilter !== 'todos') {
+    list = list.filter(d => d.tipo === typeFilter);
+  }
+  if (originFilter !== 'todos') {
+    if (originFilter === 'camera') {
+      list = list.filter(d => d.origem === 'camera');
+    } else if (originFilter === 'upload') {
+      list = list.filter(d => d.origem === 'upload' || (d.temArquivoLocal && d.origem !== 'camera'));
+    } else if (originFilter === 'link') {
+      list = list.filter(d => d.origem === 'link' || (!d.temArquivoLocal && d.origem !== 'camera'));
+    }
   }
 
-  container.innerHTML = list.map(doc => createDocumentCardHtml(doc)).join('');
+  const container = document.getElementById('documentsGridContainer');
+  if (container) {
+    if (list.length === 0) {
+      container.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--text-dim);">Nenhum arquivo ou foto encontrado com os filtros selecionados.</div>';
+    } else {
+      container.innerHTML = list.map(doc => createDocumentCardHtml(doc)).join('');
+    }
+  }
+
+  // Atualizar contadores das métricas
+  updateRepoMetrics();
+}
+
+async function updateRepoMetrics() {
+  const totalEl = document.getElementById('repoMetricTotal');
+  const fotosEl = document.getElementById('repoMetricFotos');
+  const laudosEl = document.getElementById('repoMetricLaudos');
+  const storageEl = document.getElementById('repoMetricStorage');
+
+  if (!totalEl) return;
+
+  const total = appData.documentos.length;
+  const fotos = appData.documentos.filter(d => d.tipo === 'Fotos' || d.origem === 'camera').length;
+  const laudos = appData.documentos.filter(d => d.tipo === 'CRLV' || d.tipo === 'ATPV' || (d.tipo && d.tipo.toLowerCase().includes('laudo'))).length;
+  const totalBytes = await AppFileRepo.calcularTotalBytes();
+
+  totalEl.textContent = total;
+  if (fotosEl) fotosEl.textContent = fotos;
+  if (laudosEl) laudosEl.textContent = laudos;
+  if (storageEl) storageEl.textContent = formatBytes(totalBytes);
 }
 
 function createDocumentCardHtml(doc) {
   const car = appData.veiculos.find(v => Number(v.id) === Number(doc.veiculoId));
-  const carDesc = car ? `${car.marca} ${car.modelo}` : 'Veículo';
-  const carPlate = car ? car.placa : '';
+  const carDesc = car ? `${car.marca} ${car.modelo}` : (doc.modelo || 'Veículo');
+  const carPlate = car ? car.placa : (doc.placa || '');
 
-  let iconSvg = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>`;
+  const isCamera = doc.origem === 'camera';
+  const isUpload = doc.origem === 'upload' || (doc.temArquivoLocal && !isCamera);
+  const isLink = doc.origem === 'link' || (!doc.temArquivoLocal && !isCamera);
+
+  let originBadge = '';
+  if (isCamera) {
+    originBadge = `<span class="repo-item-badge-origin">📸 Foto Câmera</span>`;
+  } else if (isUpload) {
+    originBadge = `<span class="repo-item-badge-origin">📁 Repositório</span>`;
+  } else {
+    originBadge = `<span class="repo-item-badge-origin" style="background: rgba(30, 41, 59, 0.9);">🔗 Link Externo</span>`;
+  }
+
+  const isImage = (doc.tipoMime && doc.tipoMime.startsWith('image/')) || doc.tipo === 'Fotos' || (doc.nomeArquivo && doc.nomeArquivo.match(/\.(jpg|jpeg|png|webp|gif)$/i));
+  const isPdf = (doc.tipoMime && doc.tipoMime.includes('pdf')) || doc.tipo === 'CRLV' || doc.tipo === 'ATPV' || (doc.link && doc.link.toLowerCase().endsWith('.pdf'));
+
+  let thumbHtml = '';
+  if (isImage) {
+    thumbHtml = `
+      <div class="repo-item-thumb-wrapper" onclick="previewDocumentFile(${doc.id})">
+        ${originBadge}
+        <span class="status-pill upcoming repo-item-badge-type">${doc.tipo}</span>
+        <img src="" id="docThumbImg_${doc.id}" class="repo-item-thumb-img" alt="${doc.tipo}" style="display: none;">
+        <div id="docThumbPlaceholder_${doc.id}" class="repo-item-thumb-placeholder">
+          <span style="font-size: 2.2rem;">🖼️</span>
+          <span style="font-size: 0.76rem; font-weight: 600;">Abrir Foto</span>
+        </div>
+      </div>
+    `;
+    loadThumbAsync(doc);
+  } else if (isPdf) {
+    thumbHtml = `
+      <div class="repo-item-thumb-wrapper" onclick="previewDocumentFile(${doc.id})" style="background: linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(220, 38, 38, 0.05) 100%);">
+        ${originBadge}
+        <span class="status-pill upcoming repo-item-badge-type">${doc.tipo}</span>
+        <div class="repo-item-thumb-placeholder" style="color: var(--danger);">
+          <span style="font-size: 2.4rem;">📕</span>
+          <span style="font-size: 0.82rem; font-weight: 600; color: var(--text-main);">${doc.tipo}</span>
+        </div>
+      </div>
+    `;
+  } else {
+    thumbHtml = `
+      <div class="repo-item-thumb-wrapper" onclick="previewDocumentFile(${doc.id})">
+        ${originBadge}
+        <span class="status-pill upcoming repo-item-badge-type">${doc.tipo}</span>
+        <div class="repo-item-thumb-placeholder">
+          <span style="font-size: 2.2rem;">📄</span>
+          <span style="font-size: 0.8rem; font-weight: 600;">${doc.tipo}</span>
+        </div>
+      </div>
+    `;
+  }
 
   return `
-    <div class="kpi-card" style="gap: 14px;">
-      <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-        <div class="kpi-icon-pill amber">${iconSvg}</div>
-        <span class="status-pill upcoming">${doc.tipo}</span>
-      </div>
+    <div class="repo-item-card" id="docCard_${doc.id}">
+      ${thumbHtml}
+      <div class="repo-item-body">
+        <div>
+          <h3 class="repo-item-title">${doc.nomeArquivo || doc.tipo}</h3>
+          <span class="repo-item-car-info">${carDesc} • <strong style="font-family: monospace;">${carPlate}</strong></span>
+        </div>
 
-      <div>
-        <h3 style="font-size: 1.1rem; font-weight: 700;">${doc.tipo} - ${carPlate}</h3>
-        <span style="font-size: 0.8rem; color: var(--text-muted);">${carDesc}</span>
-      </div>
+        ${doc.observacao ? `<p style="font-size: 0.78rem; color: var(--text-dim); line-height: 1.4;">${doc.observacao}</p>` : ''}
 
-      ${doc.observacao ? `<p style="font-size: 0.78rem; color: var(--text-dim);">${doc.observacao}</p>` : ''}
+        <div class="repo-item-meta">
+          <span>📅 ${formatDate(doc.dataUpload)}</span>
+          <span>${doc.tamanhoFormatado || (isLink ? 'Nuvem' : 'Local')}</span>
+        </div>
 
-      <div style="font-size: 0.74rem; color: var(--text-dim);">
-        Data: ${formatDate(doc.dataUpload)}
-      </div>
-
-      <div style="display: flex; gap: 8px; margin-top: auto; padding-top: 10px; border-top: 1px solid var(--border-color);">
-        <a href="${doc.link}" target="_blank" class="btn btn-primary btn-sm" style="flex: 1;" title="Abrir link do Google Drive ou anexo">
-          Abrir Arquivo
-        </a>
-        <button class="btn btn-secondary btn-sm" onclick="copyLink('${doc.link}')" title="Copiar Link">
-          Copiar
-        </button>
-        <button class="btn btn-danger btn-sm" onclick="deleteDocument(${doc.id})" title="Excluir">
-          ✕
-        </button>
+        <div class="repo-item-actions">
+          <button class="btn btn-primary btn-sm" style="flex: 1;" onclick="previewDocumentFile(${doc.id})" title="Visualizar em Tela Cheia">
+            👁️ Ver
+          </button>
+          <button class="btn btn-secondary btn-sm" onclick="downloadDocumentFile(${doc.id})" title="Baixar / Abrir Arquivo">
+            📥
+          </button>
+          <button class="btn btn-secondary btn-sm" onclick="copyLink('${doc.link || ''}')" title="Copiar Informações">
+            📋
+          </button>
+          <button class="btn btn-danger btn-sm" onclick="deleteDocument(${doc.id})" title="Excluir do Repositório">
+            ✕
+          </button>
+        </div>
       </div>
     </div>
   `;
 }
 
-function copyLink(text) {
-  navigator.clipboard.writeText(text);
-  showToast('Link copiado para a área de transferência!');
+async function loadThumbAsync(doc) {
+  setTimeout(async () => {
+    const imgEl = document.getElementById(`docThumbImg_${doc.id}`);
+    const placeholder = document.getElementById(`docThumbPlaceholder_${doc.id}`);
+    if (!imgEl) return;
+
+    if (doc.temArquivoLocal) {
+      const fileData = await AppFileRepo.obter(doc.id);
+      if (fileData && fileData.dataBase64) {
+        imgEl.src = fileData.dataBase64;
+        imgEl.style.display = 'block';
+        if (placeholder) placeholder.style.display = 'none';
+      }
+    } else if (doc.link && (doc.link.startsWith('http') || doc.link.startsWith('data:'))) {
+      imgEl.src = doc.link;
+      imgEl.style.display = 'block';
+      if (placeholder) placeholder.style.display = 'none';
+    }
+  }, 20);
 }
 
-function deleteDocument(docId) {
-  if (confirm('Deseja realmente remover este documento?')) {
+async function previewDocumentFile(docId) {
+  const doc = appData.documentos.find(d => Number(d.id) === Number(docId));
+  if (!doc) return;
+
+  const car = appData.veiculos.find(v => Number(v.id) === Number(doc.veiculoId));
+  const carDesc = car ? `${car.marca} ${car.modelo} (${car.placa})` : 'Veículo';
+
+  const titleEl = document.getElementById('previewModalTitle');
+  const subEl = document.getElementById('previewModalSubtitle');
+  const metaEl = document.getElementById('previewModalMeta');
+  const container = document.getElementById('previewMediaContainer');
+  const downloadBtn = document.getElementById('previewDownloadBtn');
+
+  if (titleEl) titleEl.textContent = `${doc.tipo} - ${doc.nomeArquivo || 'Arquivo'}`;
+  if (subEl) subEl.textContent = `${carDesc} • Enviado em ${formatDate(doc.dataUpload)}`;
+  if (metaEl) metaEl.textContent = `Origem: ${doc.origem === 'camera' ? 'Câmera do Dispositivo' : (doc.origem === 'upload' ? 'Repositório Local' : 'Link Externo')} • Tamanho: ${doc.tamanhoFormatado || '-'}`;
+
+  if (container) container.innerHTML = '<div style="padding: 30px; color: var(--text-dim); text-align: center;">Carregando arquivo...</div>';
+  openModal('modalPreviewFile');
+
+  let fileContent = null;
+  if (doc.temArquivoLocal) {
+    const fileData = await AppFileRepo.obter(doc.id);
+    if (fileData && fileData.dataBase64) {
+      fileContent = fileData.dataBase64;
+    }
+  }
+
+  const isImage = (doc.tipoMime && doc.tipoMime.startsWith('image/')) || doc.tipo === 'Fotos' || (doc.nomeArquivo && doc.nomeArquivo.match(/\.(jpg|jpeg|png|webp|gif)$/i));
+  const isPdf = (doc.tipoMime && doc.tipoMime.includes('pdf')) || (doc.link && doc.link.toLowerCase().endsWith('.pdf'));
+
+  if (fileContent) {
+    if (downloadBtn) {
+      downloadBtn.href = fileContent;
+      downloadBtn.download = doc.nomeArquivo || `documento_${doc.id}`;
+      downloadBtn.style.display = 'inline-flex';
+      downloadBtn.textContent = '📥 Baixar Arquivo';
+    }
+
+    if (isImage) {
+      container.innerHTML = `<img src="${fileContent}" class="lightbox-img-full" alt="${doc.tipo}">`;
+    } else if (isPdf) {
+      container.innerHTML = `
+        <div style="text-align: center; padding: 24px;">
+          <div style="font-size: 3.5rem; margin-bottom: 12px;">📕</div>
+          <h4 style="font-size: 1.15rem; margin-bottom: 8px;">${doc.nomeArquivo || 'Documento PDF'}</h4>
+          <p style="color: var(--text-muted); font-size: 0.85rem; max-width: 420px; margin: 0 auto 16px;">
+            Este documento PDF está armazenado com segurança no repositório interno da aplicação.
+          </p>
+          <a href="${fileContent}" download="${doc.nomeArquivo || 'documento.pdf'}" class="btn btn-primary">
+            📥 Baixar / Abrir PDF Completo
+          </a>
+        </div>
+      `;
+    } else {
+      container.innerHTML = `
+        <div style="text-align: center; padding: 24px;">
+          <div style="font-size: 3.5rem; margin-bottom: 12px;">📄</div>
+          <h4 style="font-size: 1.15rem; margin-bottom: 8px;">${doc.nomeArquivo || 'Arquivo'}</h4>
+          <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 16px;">${doc.observacao || 'Arquivo salvo no repositório.'}</p>
+          <a href="${fileContent}" download="${doc.nomeArquivo || 'arquivo'}" class="btn btn-primary">
+            📥 Baixar Arquivo
+          </a>
+        </div>
+      `;
+    }
+  } else {
+    // É link externo (Google Drive, OneDrive, etc.)
+    const isUrl = doc.link && (doc.link.startsWith('http://') || doc.link.startsWith('https://'));
+    if (isUrl) {
+      if (downloadBtn) {
+        downloadBtn.href = doc.link;
+        downloadBtn.target = '_blank';
+        downloadBtn.download = '';
+        downloadBtn.style.display = 'inline-flex';
+        downloadBtn.textContent = 'Abrir no Google Drive ↗';
+      }
+
+      container.innerHTML = `
+        <div style="text-align: center; padding: 24px;">
+          <div style="font-size: 3.5rem; margin-bottom: 12px;">☁️</div>
+          <h4 style="font-size: 1.15rem; margin-bottom: 8px;">${doc.tipo} (Link Externo)</h4>
+          <p style="color: var(--text-muted); font-size: 0.85rem; max-width: 480px; margin: 0 auto 16px;">
+            Este documento está hospedado na nuvem (Google Drive / OneDrive):<br>
+            <a href="${doc.link}" target="_blank" style="color: var(--primary); word-break: break-all;">${doc.link}</a>
+          </p>
+          <a href="${doc.link}" target="_blank" class="btn btn-primary">
+            Abrir Link Externo ↗
+          </a>
+        </div>
+      `;
+    } else {
+      if (downloadBtn) downloadBtn.style.display = 'none';
+      container.innerHTML = `
+        <div style="text-align: center; padding: 24px;">
+          <div style="font-size: 3.5rem; margin-bottom: 12px;">📁</div>
+          <h4 style="font-size: 1.15rem;">${doc.tipo} - ${doc.link || doc.nomeArquivo}</h4>
+          <p style="color: var(--text-muted); font-size: 0.85rem;">${doc.observacao || 'Documento registrado no sistema.'}</p>
+        </div>
+      `;
+    }
+  }
+}
+
+async function downloadDocumentFile(docId) {
+  const doc = appData.documentos.find(d => Number(d.id) === Number(docId));
+  if (!doc) return;
+
+  if (doc.temArquivoLocal) {
+    const fileData = await AppFileRepo.obter(doc.id);
+    if (fileData && fileData.dataBase64) {
+      const a = document.createElement('a');
+      a.href = fileData.dataBase64;
+      a.download = doc.nomeArquivo || `documento_${doc.id}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      showToast(`Download de "${doc.nomeArquivo}" iniciado!`);
+      return;
+    }
+  }
+
+  if (doc.link && (doc.link.startsWith('http://') || doc.link.startsWith('https://'))) {
+    window.open(doc.link, '_blank');
+  } else {
+    previewDocumentFile(docId);
+  }
+}
+
+async function deleteDocument(docId) {
+  if (confirm('Deseja realmente remover este arquivo do repositório?')) {
+    await AppFileRepo.excluir(docId);
     appData.documentos = appData.documentos.filter(d => Number(d.id) !== Number(docId));
     saveDatabase();
     renderDocumentsGrid();
     if (currentDetailCarId) renderVehicleDetail(currentDetailCarId);
-    showToast('Documento removido.');
+    showToast('Arquivo removido do repositório.');
   }
 }
 
@@ -1103,6 +1478,9 @@ function openModalAddVehicle() {
   document.getElementById('modalVehicleTitle').textContent = 'Cadastrar Novo Veículo';
   document.getElementById('formVehicle').reset();
   document.getElementById('vehId').value = '';
+  document.getElementById('vehRenavam').value = '';
+  document.getElementById('vehChassi').value = '';
+  document.getElementById('vehObservacoes').value = '';
   document.getElementById('vehDataCompra').value = new Date().toISOString().slice(0, 10);
   openModal('modalVehicle');
 }
@@ -1117,6 +1495,9 @@ function editCarById(carId) {
   document.getElementById('vehModelo').value = car.modelo;
   document.getElementById('vehAno').value = car.ano;
   document.getElementById('vehPlaca').value = car.placa;
+  document.getElementById('vehRenavam').value = car.renavam || '';
+  document.getElementById('vehChassi').value = car.chassi || car.chassis || '';
+  document.getElementById('vehObservacoes').value = car.observacoes || '';
   document.getElementById('vehCor').value = car.cor || '';
   document.getElementById('vehKm').value = car.km || '';
   document.getElementById('vehCombustivel').value = car.combustivel || 'Flex';
@@ -1126,6 +1507,13 @@ function editCarById(carId) {
   document.getElementById('vehDataCompra').value = car.dataCompra || '';
   document.getElementById('vehValorCompra').value = car.valorCompra || '';
   document.getElementById('vehValorFipe').value = car.valorFipe || '';
+
+  // Mostrar alerta de reverter venda apenas se o veículo está vendido
+  const revertBlock = document.getElementById('revertSaleBlock');
+  if (revertBlock) {
+    revertBlock.style.display = car.status === 'Vendido' ? 'block' : 'none';
+    revertBlock.dataset.carId = car.id;
+  }
 
   openModal('modalVehicle');
 }
@@ -1145,6 +1533,9 @@ function handleSaveVehicle(e) {
     modelo: document.getElementById('vehModelo').value.trim(),
     ano: Number(document.getElementById('vehAno').value),
     placa: document.getElementById('vehPlaca').value.trim().toUpperCase(),
+    renavam: document.getElementById('vehRenavam').value.trim(),
+    chassi: document.getElementById('vehChassi').value.trim().toUpperCase(),
+    observacoes: document.getElementById('vehObservacoes').value.trim(),
     cor: document.getElementById('vehCor').value.trim(),
     km: Number(document.getElementById('vehKm').value) || 0,
     combustivel: document.getElementById('vehCombustivel').value,
@@ -1264,6 +1655,64 @@ function handleSaveSale(e) {
   showToast(`Venda concluída! Lucro apurado: ${formatMoney(car.lucro)}`);
 }
 
+// ============================================================================
+// REVERTER VENDA
+// ============================================================================
+function revertSale() {
+  // Tenta pegar o ID a partir do bloco no modal (se chamado de lá) ou da ficha atual
+  const revertBlock = document.getElementById('revertSaleBlock');
+  const idFromModal = revertBlock && revertBlock.dataset.carId ? Number(revertBlock.dataset.carId) : null;
+  const targetId = idFromModal || currentDetailCarId;
+
+  if (!targetId) {
+    showToast('Nenhum veículo selecionado para reverter.');
+    return;
+  }
+
+  const car = appData.veiculos.find(v => Number(v.id) === Number(targetId));
+  if (!car) return;
+
+  if (car.status !== 'Vendido') {
+    showToast('Este veículo não está marcado como vendido.');
+    return;
+  }
+
+  const compradorNome = car.comprador || 'comprador';
+  const numParc = car.numParcelas || 0;
+  const confirmMsg = `Reverter a venda do ${car.marca} ${car.modelo} (${car.placa})?\n\nIsso irá:\n• Remover os dados de ${compradorNome}\n• Apagar o carnê de ${numParc} parcela(s)\n• Voltar o status para "Em estoque"\n\nEsta ação não pode ser desfeita.`;
+
+  if (!confirm(confirmMsg)) return;
+
+  // Remover parcelas vinculadas ao veículo
+  const parcelasRemovidas = appData.pagamentos.filter(p => Number(p.veiculoId) === Number(car.id)).length;
+  appData.pagamentos = appData.pagamentos.filter(p => Number(p.veiculoId) !== Number(car.id));
+
+  // Zerar todos os campos de venda
+  car.status = 'Em estoque';
+  car.dataVenda = '';
+  car.comprador = '';
+  car.telefoneComprador = '';
+  car.valorVenda = 0;
+  car.parcelamento = '';
+  car.valorEntrada = 0;
+  car.numParcelas = 0;
+  car.valorParcela = 0;
+  car.lucro = 0;
+
+  saveDatabase();
+  updateCalculations();
+  closeModal('modalVehicle');
+  renderDashboard();
+  renderInventory();
+  renderPaymentsMatrix();
+  renderActiveFinancings();
+  if (currentDetailCarId && Number(currentDetailCarId) === Number(car.id)) {
+    renderVehicleDetail(car.id);
+  }
+
+  showToast(`Venda revertida! ${car.marca} ${car.modelo} voltou ao estoque. ${parcelasRemovidas} parcela(s) removida(s).`);
+}
+
 // Modal Despesas
 function openModalAddExpense() {
   document.getElementById('formExpense').reset();
@@ -1309,45 +1758,368 @@ function handleSaveExpense(e) {
   showToast('Despesa lançada e incorporada ao custo do veículo!');
 }
 
-// Modal Documento
-function openModalAddDocument() {
-  document.getElementById('formDocument').reset();
-  document.getElementById('docData').value = new Date().toISOString().slice(0, 10);
+// ============================================================================
+// MODAL REPOSITÓRIO: ANEXAR ARQUIVO & TIRAR FOTOS
+// ============================================================================
+function openModalAddDocument(initialTab = 'upload') {
+  const form = document.getElementById('formDocument');
+  if (form) form.reset();
+  clearSelectedUploadFile();
+
+  const dateInput = document.getElementById('docData');
+  if (dateInput) dateInput.value = new Date().toISOString().slice(0, 10);
+
+  switchDocTab(initialTab);
   openModal('modalDocument');
 }
 
-function handleSaveDocument(e) {
-  e.preventDefault();
-  const carId = Number(document.getElementById('docCarSelect').value);
-  const car = appData.veiculos.find(v => Number(v.id) === carId);
-  if (!car) return;
-
-  const newDoc = {
-    id: Date.now(),
-    veiculoId: carId,
-    placa: car.placa,
-    modelo: car.modelo,
-    tipo: document.getElementById('docTipo').value,
-    link: document.getElementById('docLink').value.trim(),
-    dataUpload: document.getElementById('docData').value,
-    observacao: document.getElementById('docObs').value.trim()
-  };
-
-  appData.documentos.push(newDoc);
-  saveDatabase();
-  closeModal('modalDocument');
-  renderDocumentsGrid();
-  if (currentDetailCarId && currentDetailCarId === carId) renderVehicleDetail(carId);
-
-  showToast('Documento vinculado com sucesso!');
-}
-
-function openModalAddDocumentForCurrentCar() {
-  openModalAddDocument();
+function openModalAddDocumentForCurrentCar(initialTab = 'upload') {
+  openModalAddDocument(initialTab);
   if (currentDetailCarId) {
     const sel = document.getElementById('docCarSelect');
     if (sel) sel.value = currentDetailCarId;
   }
+}
+
+function closeModalDocument() {
+  stopCamera();
+  closeModal('modalDocument');
+}
+
+function switchDocTab(tabName) {
+  const tabUpload = document.getElementById('tabBtnDocUpload');
+  const tabCamera = document.getElementById('tabBtnDocCamera');
+  const tabLink = document.getElementById('tabBtnDocLink');
+
+  if (tabUpload) tabUpload.classList.toggle('active', tabName === 'upload');
+  if (tabCamera) tabCamera.classList.toggle('active', tabName === 'camera');
+  if (tabLink) tabLink.classList.toggle('active', tabName === 'link');
+
+  const panelUpload = document.getElementById('panelDocUpload');
+  const panelCamera = document.getElementById('panelDocCamera');
+  const panelLink = document.getElementById('panelDocLink');
+
+  if (panelUpload) panelUpload.style.display = tabName === 'upload' ? 'block' : 'none';
+  if (panelCamera) panelCamera.style.display = tabName === 'camera' ? 'block' : 'none';
+  if (panelLink) panelLink.style.display = tabName === 'link' ? 'block' : 'none';
+
+  const originInput = document.getElementById('docOrigin');
+  if (originInput) originInput.value = tabName;
+
+  if (tabName === 'camera') {
+    startCamera(currentCameraFacing);
+  } else {
+    stopCamera();
+  }
+}
+
+// Câmera ao vivo
+async function startCamera(facing = 'environment') {
+  stopCamera();
+  const video = document.getElementById('cameraVideo');
+  if (!video) return;
+
+  currentCameraFacing = facing;
+  const constraints = {
+    video: {
+      facingMode: { ideal: facing },
+      width: { ideal: 1280 },
+      height: { ideal: 720 }
+    },
+    audio: false
+  };
+
+  try {
+    cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
+    video.srcObject = cameraStream;
+    await video.play();
+
+    const liveSec = document.getElementById('cameraLiveSection');
+    const prevSec = document.getElementById('cameraCapturedPreviewBox');
+    if (liveSec) liveSec.style.display = 'block';
+    if (prevSec) prevSec.style.display = 'none';
+  } catch (err) {
+    console.warn('Câmera indisponível ou permissão negada:', err);
+    // Em caso de erro na webcam (ex: desktop sem webcam), exibe alerta amigável
+    const liveSec = document.getElementById('cameraLiveSection');
+    if (liveSec) {
+      liveSec.innerHTML = `
+        <div style="background: var(--bg-card); padding: 24px; text-align: center; border-radius: var(--radius-md); border: 1px dashed var(--border-color);">
+          <div style="font-size: 2.2rem; margin-bottom: 8px;">📷</div>
+          <p style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 12px;">
+            Não foi possível abrir o streaming de vídeo da câmera neste navegador/dispositivo.
+          </p>
+          <label class="btn btn-primary btn-sm" style="cursor: pointer;">
+            <input type="file" accept="image/*" capture="environment" style="display: none;" onchange="handleNativeCameraCapture(event)">
+            📸 Abrir Câmera do Celular ou Arquivo de Foto
+          </label>
+        </div>
+      `;
+    }
+  }
+}
+
+function stopCamera() {
+  if (cameraStream) {
+    cameraStream.getTracks().forEach(track => track.stop());
+    cameraStream = null;
+  }
+  const video = document.getElementById('cameraVideo');
+  if (video) video.srcObject = null;
+}
+
+function switchCameraFacing() {
+  const nextFacing = currentCameraFacing === 'environment' ? 'user' : 'environment';
+  startCamera(nextFacing);
+}
+
+function capturePhotoFromCamera() {
+  const video = document.getElementById('cameraVideo');
+  if (!video || !cameraStream) {
+    alert('A câmera precisa estar ativa para capturar a foto.');
+    return;
+  }
+
+  const canvas = document.createElement('canvas');
+  let w = video.videoWidth || 1280;
+  let h = video.videoHeight || 720;
+  // Limita a largura máxima para economizar armazenamento mantendo ótima nitidez
+  if (w > 1280) {
+    h = Math.round((h * 1280) / w);
+    w = 1280;
+  }
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0, w, h);
+
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+  const sizeBytes = Math.round(dataUrl.length * 0.75);
+
+  stopCamera();
+
+  const liveSec = document.getElementById('cameraLiveSection');
+  const prevSec = document.getElementById('cameraCapturedPreviewBox');
+  const imgEl = document.getElementById('cameraCapturedImg');
+
+  if (liveSec) liveSec.style.display = 'none';
+  if (prevSec) prevSec.style.display = 'block';
+  if (imgEl) imgEl.src = dataUrl;
+
+  document.getElementById('docFileBase64').value = dataUrl;
+  document.getElementById('docFileName').value = `Foto_${new Date().toISOString().slice(0, 10)}_${Date.now().toString().slice(-4)}.jpg`;
+  document.getElementById('docFileSize').value = sizeBytes;
+  document.getElementById('docFileType').value = 'image/jpeg';
+  document.getElementById('docOrigin').value = 'camera';
+
+  const selTipo = document.getElementById('docTipo');
+  if (selTipo) selTipo.value = 'Fotos';
+
+  showToast('Foto capturada com sucesso!');
+}
+
+function retakeCameraPhoto() {
+  document.getElementById('docFileBase64').value = '';
+  document.getElementById('docFileName').value = '';
+  document.getElementById('docFileSize').value = '0';
+  document.getElementById('docFileType').value = '';
+
+  const liveSec = document.getElementById('cameraLiveSection');
+  const prevSec = document.getElementById('cameraCapturedPreviewBox');
+  if (liveSec) liveSec.style.display = 'block';
+  if (prevSec) prevSec.style.display = 'none';
+
+  startCamera(currentCameraFacing);
+}
+
+function handleNativeCameraCapture(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const dataUrl = e.target.result;
+    stopCamera();
+
+    const liveSec = document.getElementById('cameraLiveSection');
+    const prevSec = document.getElementById('cameraCapturedPreviewBox');
+    const imgEl = document.getElementById('cameraCapturedImg');
+
+    if (liveSec) liveSec.style.display = 'none';
+    if (prevSec) prevSec.style.display = 'block';
+    if (imgEl) imgEl.src = dataUrl;
+
+    document.getElementById('docFileBase64').value = dataUrl;
+    document.getElementById('docFileName').value = file.name || `Foto_${Date.now()}.jpg`;
+    document.getElementById('docFileSize').value = file.size;
+    document.getElementById('docFileType').value = file.type || 'image/jpeg';
+    document.getElementById('docOrigin').value = 'camera';
+
+    const selTipo = document.getElementById('docTipo');
+    if (selTipo) selTipo.value = 'Fotos';
+
+    showToast('Foto capturada do dispositivo!');
+  };
+  reader.readAsDataURL(file);
+}
+
+// Drag & Drop e Seleção de Arquivos
+function setupRepoDropzoneEvents() {
+  const dropzone = document.getElementById('docDropzone');
+  if (!dropzone) return;
+
+  ['dragenter', 'dragover'].forEach(eventName => {
+    dropzone.addEventListener(eventName, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dropzone.classList.add('dragover');
+    });
+  });
+
+  ['dragleave', 'drop'].forEach(eventName => {
+    dropzone.addEventListener(eventName, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dropzone.classList.remove('dragover');
+    });
+  });
+
+  dropzone.addEventListener('drop', (e) => {
+    const dt = e.dataTransfer;
+    const files = dt.files;
+    if (files && files.length > 0) {
+      processSelectedFile(files[0]);
+    }
+  });
+}
+
+function handleDocFileSelected(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  processSelectedFile(file);
+}
+
+function processSelectedFile(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const dataUrl = e.target.result;
+
+    document.getElementById('docFileBase64').value = dataUrl;
+    document.getElementById('docFileName').value = file.name;
+    document.getElementById('docFileSize').value = file.size;
+    document.getElementById('docFileType').value = file.type || 'application/octet-stream';
+    document.getElementById('docOrigin').value = 'upload';
+
+    const previewCard = document.getElementById('docUploadPreviewCard');
+    const nameEl = document.getElementById('docUploadName');
+    const metaEl = document.getElementById('docUploadMeta');
+    const thumbEl = document.getElementById('docUploadThumb');
+    const dropzone = document.getElementById('docDropzone');
+
+    if (nameEl) nameEl.textContent = file.name;
+    if (metaEl) metaEl.textContent = `${(file.type.split('/')[1] || 'ARQUIVO').toUpperCase()} • ${formatBytes(file.size)}`;
+
+    if (thumbEl) {
+      if (file.type.startsWith('image/')) {
+        thumbEl.innerHTML = `<img src="${dataUrl}" style="width:100%; height:100%; object-fit:cover; border-radius:var(--radius-sm);">`;
+        const selTipo = document.getElementById('docTipo');
+        if (selTipo && selTipo.value === 'CRLV') selTipo.value = 'Fotos';
+      } else if (file.type.includes('pdf')) {
+        thumbEl.innerHTML = `<span style="font-size:1.6rem;">📕</span>`;
+      } else {
+        thumbEl.innerHTML = `<span style="font-size:1.6rem;">📄</span>`;
+      }
+    }
+
+    if (previewCard) previewCard.style.display = 'flex';
+    if (dropzone) dropzone.style.display = 'none';
+
+    showToast(`Arquivo "${file.name}" pronto para anexar!`);
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearSelectedUploadFile() {
+  const fileInput = document.getElementById('docFileInput');
+  if (fileInput) fileInput.value = '';
+
+  document.getElementById('docFileBase64').value = '';
+  document.getElementById('docFileName').value = '';
+  document.getElementById('docFileSize').value = '0';
+  document.getElementById('docFileType').value = '';
+
+  const previewCard = document.getElementById('docUploadPreviewCard');
+  const dropzone = document.getElementById('docDropzone');
+  if (previewCard) previewCard.style.display = 'none';
+  if (dropzone) dropzone.style.display = 'block';
+}
+
+// Salvar Documento / Foto no Repositório
+async function handleSaveDocument(e) {
+  e.preventDefault();
+  const carId = Number(document.getElementById('docCarSelect').value);
+  const car = appData.veiculos.find(v => Number(v.id) === carId);
+  if (!car) {
+    alert('Selecione um veículo válido.');
+    return;
+  }
+
+  const origin = document.getElementById('docOrigin').value;
+  const fileBase64 = document.getElementById('docFileBase64').value;
+  const fileName = document.getElementById('docFileName').value;
+  const fileSize = Number(document.getElementById('docFileSize').value) || 0;
+  const fileType = document.getElementById('docFileType').value;
+  const linkExterno = document.getElementById('docLink').value.trim();
+
+  if (origin !== 'link' && !fileBase64) {
+    alert('Por favor, selecione um arquivo ou tire uma foto antes de salvar.');
+    return;
+  }
+  if (origin === 'link' && !linkExterno) {
+    alert('Por favor, informe o link do arquivo.');
+    return;
+  }
+
+  const docId = Date.now();
+  const docObj = {
+    id: docId,
+    veiculoId: carId,
+    placa: car.placa,
+    modelo: car.modelo,
+    tipo: document.getElementById('docTipo').value,
+    link: origin === 'link' ? linkExterno : (fileName || 'Arquivo no Repositório'),
+    origem: origin, // 'upload', 'camera', 'link'
+    nomeArquivo: fileName || (origin === 'link' ? 'Link na Nuvem' : 'Arquivo'),
+    tamanhoBytes: fileSize,
+    tamanhoFormatado: formatBytes(fileSize),
+    tipoMime: fileType || (origin === 'link' ? 'link/url' : 'application/octet-stream'),
+    dataUpload: document.getElementById('docData').value,
+    observacao: document.getElementById('docObs').value.trim(),
+    temArquivoLocal: origin !== 'link'
+  };
+
+  // Persistir no IndexedDB caso seja upload ou foto da câmera
+  if (origin !== 'link' && fileBase64) {
+    await AppFileRepo.salvar(docId, {
+      id: docId,
+      veiculoId: carId,
+      nome: fileName,
+      tipoMime: fileType,
+      tamanhoBytes: fileSize,
+      dataBase64: fileBase64,
+      criadoEm: new Date().toISOString()
+    });
+  }
+
+  appData.documentos.push(docObj);
+  saveDatabase();
+  closeModalDocument();
+  renderDocumentsGrid();
+  if (currentDetailCarId && currentDetailCarId === carId) {
+    renderVehicleDetail(carId);
+  }
+
+  showToast(`Salvo no Repositório com sucesso!`);
 }
 
 // ============================================================================
@@ -1509,7 +2281,16 @@ function handleSaveEditInstallments(e) {
 // ============================================================================
 function openModalSettlement(carId = null, targetInstallmentId = null) {
   try {
-    const soldFinanced = appData.veiculos.filter(v => v.status === 'Vendido' && (v.numParcelas > 0));
+    // Garante que todas as parcelas estejam geradas antes de filtrar
+    appData.veiculos.forEach(v => {
+      if (v.status === 'Vendido' && (v.numParcelas > 0 || v.parcelamento === 'Parcelado')) {
+        ensureInstallmentsForCar(v);
+      }
+    });
+
+    const soldFinanced = appData.veiculos.filter(v =>
+      v.status === 'Vendido' && (v.numParcelas > 0 || v.parcelamento === 'Parcelado')
+    );
     if (soldFinanced.length === 0) {
       showToast('Não há veículos com financiamento ou parcelamento cadastrados.');
       return;
@@ -1538,7 +2319,9 @@ function populateSettlementVehicleSelect(selectedId) {
   const sel = document.getElementById('settleVehSelect');
   if (!sel) return;
 
-  const soldFinanced = appData.veiculos.filter(v => v.status === 'Vendido' && (v.numParcelas > 0));
+  const soldFinanced = appData.veiculos.filter(v =>
+    v.status === 'Vendido' && (v.numParcelas > 0 || v.parcelamento === 'Parcelado')
+  );
   sel.innerHTML = soldFinanced.map(v => {
     ensureInstallmentsForCar(v);
     const pendentes = appData.pagamentos.filter(p => Number(p.veiculoId) === Number(v.id) && p.status !== 'pago');
@@ -1888,7 +2671,7 @@ function downloadCSV(csvContent, filename) {
 }
 
 function exportVehiclesToCSV() {
-  const headers = ['ID', 'Data da compra', 'Marca', 'Modelo', 'Ano', 'Placa', 'Sociedade', 'Antigo dono', 'Valor de compra', 'Despesas (total)', 'Custo final', 'Valor FIPE', 'Data da venda', 'Novo comprador', 'Valor de venda', 'Parcelamento', 'Valor da entrada', 'Nº de parcelas', 'Valor da parcela', 'Lucro', 'Status'];
+  const headers = ['ID', 'Data da compra', 'Marca', 'Modelo', 'Ano', 'Placa', 'Renavam', 'Chassis', 'Cor', 'KM', 'Combustivel', 'Cambio', 'Sociedade', 'Antigo dono', 'Valor de compra', 'Despesas (total)', 'Custo final', 'Valor FIPE', 'Data da venda', 'Novo comprador', 'Valor de venda', 'Parcelamento', 'Valor da entrada', 'Nº de parcelas', 'Valor da parcela', 'Lucro', 'Status', 'Observacoes'];
 
   const rows = appData.veiculos.map(v => [
     v.id,
@@ -1897,6 +2680,12 @@ function exportVehiclesToCSV() {
     `"${v.modelo}"`,
     v.ano,
     v.placa,
+    `"${v.renavam || ''}"`,
+    `"${v.chassi || v.chassis || ''}"`,
+    v.cor || '',
+    v.km || '',
+    v.combustivel || '',
+    v.cambio || '',
     v.sociedade || '',
     `"${v.antigoDono || ''}"`,
     v.valorCompra,
@@ -1911,7 +2700,8 @@ function exportVehiclesToCSV() {
     v.numParcelas || '',
     v.valorParcela || '',
     v.lucro || '',
-    v.status
+    v.status,
+    `"${(v.observacoes || '').replace(/"/g, '""')}"`
   ]);
 
   const csv = [headers.join(';')].concat(rows.map(r => r.join(';'))).join('\n');
@@ -1942,7 +2732,7 @@ function exportExpensesToCSV() {
 }
 
 function exportDocumentsToCSV() {
-  const headers = ['ID', 'ID do veiculo', 'Placa', 'Modelo', 'Tipo de documento', 'Link do arquivo', 'Data de upload', 'Observacao'];
+  const headers = ['ID', 'ID do veiculo', 'Placa', 'Modelo', 'Tipo de documento', 'Origem', 'Nome do Arquivo', 'Tamanho', 'Link / Local', 'Data de upload', 'Observacao'];
 
   const rows = appData.documentos.map(doc => {
     const car = appData.veiculos.find(v => Number(v.id) === Number(doc.veiculoId));
@@ -1952,7 +2742,10 @@ function exportDocumentsToCSV() {
       car ? car.placa : (doc.placa || ''),
       `"${car ? car.modelo : (doc.modelo || '')}"`,
       doc.tipo,
-      `"${doc.link}"`,
+      doc.origem || 'link',
+      `"${doc.nomeArquivo || ''}"`,
+      doc.tamanhoFormatado || '',
+      `"${doc.link || ''}"`,
       doc.dataUpload,
       `"${doc.observacao || ''}"`
     ];
