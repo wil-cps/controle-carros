@@ -1215,6 +1215,7 @@ function renderInventory() {
             <div style="display: flex; gap: 6px;">
               <button class="btn btn-secondary btn-sm" onclick="viewCarDetail(${v.id})" title="Ver Ficha">Ver</button>
               <button class="btn btn-secondary btn-sm" onclick="editCarById(${v.id})" title="Editar">✏️</button>
+              <button class="btn btn-secondary btn-sm admin-only" onclick="openModalContract(${v.id})" title="Gerar Contrato (.docx)">📄 Contrato</button>
             </div>
           </td>
         </tr>
@@ -1282,6 +1283,7 @@ function createVehicleCardHtml(v) {
       ? `<button class="btn btn-success btn-sm" onclick="openModalSellVehicle(${v.id})" title="Registrar Venda">Vender</button>`
       : `<button class="btn btn-secondary btn-sm" onclick="viewCarDetail(${v.id}, 'pagamentos')" title="Ver Carnê">Carnê</button>`
     }
+          <button class="btn btn-secondary btn-sm admin-only" onclick="openModalContract(${v.id})" title="Gerar Contrato (.docx)">📄 Contrato</button>
           <button class="btn btn-secondary btn-sm" onclick="openModalAddExpenseForCar(${v.id})" title="Lançar Despesa">+</button>
         </div>
       </div>
@@ -2094,8 +2096,6 @@ function openModalAddVehicle() {
   document.getElementById('vehRenavam').value = '';
   document.getElementById('vehChassi').value = '';
   document.getElementById('vehObservacoes').value = '';
-  const statusSel = document.getElementById('vehStatus');
-  if (statusSel) { statusSel.value = 'Em estoque'; statusSel.disabled = false; }
   document.getElementById('vehDataCompra').value = new Date().toISOString().slice(0, 10);
   populateVehicleSocioSelect();
   openModal('modalVehicle');
@@ -2123,18 +2123,6 @@ function editCarById(carId) {
   document.getElementById('vehDataCompra').value = car.dataCompra || '';
   document.getElementById('vehValorCompra').value = car.valorCompra || '';
   document.getElementById('vehValorFipe').value = car.valorFipe || '';
-
-  // Preencher status e desabilitar se vendido (alterado pela venda)
-  const statusSel = document.getElementById('vehStatus');
-  if (statusSel) {
-    if (car.status === 'Vendido') {
-      statusSel.value = 'Em estoque'; // Visualmente mostra opção mas fica desabilitado
-      statusSel.disabled = true;
-    } else {
-      statusSel.value = car.status || 'Em estoque';
-      statusSel.disabled = false;
-    }
-  }
 
   // Mostrar alerta de reverter venda apenas se o veículo está vendido
   const revertBlock = document.getElementById('revertSaleBlock');
@@ -2185,11 +2173,7 @@ function handleSaveVehicle(e) {
     dataCompra: document.getElementById('vehDataCompra').value,
     valorCompra: Number(document.getElementById('vehValorCompra').value) || 0,
     valorFipe: Number(document.getElementById('vehValorFipe').value) || 0,
-    status: isEdit
-      ? (appData.veiculos.find(v => Number(v.id) === Number(idVal)).status === 'Vendido'
-        ? 'Vendido'
-        : (document.getElementById('vehStatus').value || 'Em estoque'))
-      : (document.getElementById('vehStatus').value || 'Em estoque')
+    status: isEdit ? (appData.veiculos.find(v => Number(v.id) === Number(idVal)).status || 'Em estoque') : 'Em estoque'
   };
 
   if (isEdit) {
@@ -3827,4 +3811,646 @@ function buildCarnetDocumentHtml(car, slipsHtml) {
   <script>window.addEventListener('load', function () { setTimeout(function () { window.print(); }, 300); });<\/script>
 </body>
 </html>`;
+}
+
+// ============================================================================
+// CONTRATO DE COMPRA E VENDA COM RESERVA DE DOMÍNIO (.docx)
+// ============================================================================
+const CONTRATO_VENDEDOR_STORAGE_KEY = 'automanage_toledo_contrato_vendedor';
+const CONTRATO_TOTAL_PASSOS = 4;
+let contratoPasso = 1;
+
+const CONTRATO_VENDEDOR_PADRAO = {
+  nome: 'TOLEDO & TOLEDO MOTORES E MECÂNICA EM GERAL LTDA – ME',
+  cnpj: '12.601.048/0001-34',
+  logradouro: 'Rua Ricardo Bassoli Cesare',
+  numero: '237',
+  bairro: 'Jardim das Bandeiras',
+  cidade: 'Campinas',
+  estado: 'São Paulo',
+  jurosMes: '0,671',
+  jurosAno: '8,06',
+  diasVencimento: 10
+};
+
+// ---------- Números e datas por extenso ----------
+const EXT_UNIDADES = ['', 'um', 'dois', 'três', 'quatro', 'cinco', 'seis', 'sete', 'oito', 'nove', 'dez', 'onze', 'doze', 'treze', 'quatorze', 'quinze', 'dezesseis', 'dezessete', 'dezoito', 'dezenove'];
+const EXT_DEZENAS = ['', '', 'vinte', 'trinta', 'quarenta', 'cinquenta', 'sessenta', 'setenta', 'oitenta', 'noventa'];
+const EXT_CENTENAS = ['', 'cento', 'duzentos', 'trezentos', 'quatrocentos', 'quinhentos', 'seiscentos', 'setecentos', 'oitocentos', 'novecentos'];
+const MESES_EXTENSO = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+
+function extensoAte999(n) {
+  if (n === 100) return 'cem';
+  const partes = [];
+  const c = Math.floor(n / 100);
+  const r = n % 100;
+  if (c) partes.push(EXT_CENTENAS[c]);
+  if (r > 0 && r < 20) partes.push(EXT_UNIDADES[r]);
+  else if (r >= 20) partes.push(EXT_DEZENAS[Math.floor(r / 10)] + (r % 10 ? ` e ${EXT_UNIDADES[r % 10]}` : ''));
+  return partes.join(' e ');
+}
+
+function numeroPorExtenso(valor) {
+  let n = Math.floor(Math.abs(Number(valor) || 0));
+  if (n === 0) return 'zero';
+  const escalas = [
+    [1e9, 'um bilhão', 'bilhões'],
+    [1e6, 'um milhão', 'milhões'],
+    [1e3, 'mil', 'mil'],
+    [1, null, null]
+  ];
+  const grupos = [];
+  for (const [base, singular, plural] of escalas) {
+    const g = Math.floor(n / base);
+    n %= base;
+    if (!g) continue;
+    let texto;
+    if (base === 1) texto = extensoAte999(g);
+    else if (g === 1) texto = singular;
+    else texto = `${extensoAte999(g)} ${plural}`;
+    grupos.push({ texto, valor: g });
+  }
+  return grupos.reduce((acc, g, i) => {
+    if (i === 0) return g.texto;
+    const ultimo = i === grupos.length - 1;
+    const usaE = ultimo && (g.valor < 100 || g.valor % 100 === 0);
+    return `${acc}${usaE ? ' e ' : ' '}${g.texto}`;
+  }, '');
+}
+
+function valorPorExtenso(valor) {
+  const total = Math.round((Number(valor) || 0) * 100);
+  const reais = Math.floor(total / 100);
+  const centavos = total % 100;
+  const partes = [];
+  if (reais > 0) {
+    const sufixo = reais === 1 ? 'real' : (reais % 1e6 === 0 ? 'de reais' : 'reais');
+    partes.push(`${numeroPorExtenso(reais)} ${sufixo}`);
+  }
+  if (centavos > 0) partes.push(`${numeroPorExtenso(centavos)} ${centavos === 1 ? 'centavo' : 'centavos'}`);
+  return partes.length ? partes.join(' e ') : 'zero reais';
+}
+
+function capitalizar(texto) {
+  return texto ? texto.charAt(0).toUpperCase() + texto.slice(1) : texto;
+}
+
+function formatarReaisContrato(valor) {
+  return `R$ ${(Number(valor) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function valorContrato(valor, maiuscula = false) {
+  const extenso = valorPorExtenso(valor);
+  return `${formatarReaisContrato(valor)} (${maiuscula ? capitalizar(extenso) : extenso})`;
+}
+
+function dataPorExtenso(iso) {
+  const [a, m, d] = String(iso || '').split('-').map(Number);
+  if (!a || !m || !d) return '';
+  return `${d} de ${MESES_EXTENSO[m - 1]} de ${a}`;
+}
+
+function dataCurta(iso) {
+  const [a, m, d] = String(iso || '').split('-');
+  return a && m && d ? `${d}/${m}/${a}` : '';
+}
+
+function parseNumeroBR(texto) {
+  const limpo = String(texto ?? '').trim().replace(/\s|R\$/g, '');
+  if (!limpo) return 0;
+  const normalizado = limpo.includes(',') ? limpo.replace(/\./g, '').replace(',', '.') : limpo;
+  return Number(normalizado) || 0;
+}
+
+function formatarPercentual(valor, casas) {
+  return (Number(valor) || 0).toLocaleString('pt-BR', { minimumFractionDigits: casas, maximumFractionDigits: casas });
+}
+
+function formatarCpf(texto) {
+  const d = String(texto || '').replace(/\D/g, '').slice(0, 11);
+  if (d.length !== 11) return d;
+  return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
+}
+
+function cpfValido(texto) {
+  const d = String(texto || '').replace(/\D/g, '');
+  if (d.length !== 11 || /^(\d)\1{10}$/.test(d)) return false;
+  for (let t = 9; t < 11; t++) {
+    let soma = 0;
+    for (let i = 0; i < t; i++) soma += Number(d[i]) * (t + 1 - i);
+    if (((soma * 10) % 11) % 10 !== Number(d[t])) return false;
+  }
+  return true;
+}
+
+// ---------- Texto do contrato (modelo de reserva de domínio) ----------
+function montarFormaPagamentoContrato(pg) {
+  const partes = [];
+  if (pg.entrada > 0) partes.push(`uma entrada de ${valorContrato(pg.entrada)}`);
+  pg.intermediarias.forEach(p => {
+    partes.push(`uma parcela no valor de ${valorContrato(p.valor)} no dia ${dataCurta(p.data)}`);
+  });
+  if (pg.numParcelas === 1) {
+    partes.push(`1 parcela no valor de ${valorContrato(pg.valorParcela)} a ser paga até o dia ${dataCurta(pg.primeiroVencimento)}`);
+  } else if (pg.numParcelas > 1) {
+    partes.push(`${pg.numParcelas} parcelas mensais, no valor de ${valorContrato(pg.valorParcela)} sendo certo que a primeira parcela deverá ser paga até o dia ${dataCurta(pg.primeiroVencimento)} e as sucedentes com data de vencimento sempre no mesmo dia dos meses subsequentes`);
+  }
+  if (partes.length === 0) return 'à vista';
+  return partes.reduce((acc, parte, i) => {
+    if (i === 0) return parte;
+    const separador = (i === 1 && pg.entrada > 0) ? ' mais ' : ', mais ';
+    return acc + separador + parte;
+  }, '');
+}
+
+function montarParagrafosContrato(d) {
+  const v = d.vendedor;
+  const c = d.comprador;
+  const veic = d.veiculo;
+  const pg = d.pagamento;
+  const garantia = veic.garantiaDias > 0
+    ? `Com garantia de ${veic.garantiaDias} dias(${numeroPorExtenso(veic.garantiaDias)}) ${veic.garantiaItens}.`.replace(/\s+\./, '.')
+    : '';
+  const dataAssinatura = d.dataAssinatura ? dataCurta(d.dataAssinatura) : '______/______/______';
+  const localData = `${v.cidade}, ${dataAssinatura}`;
+  const linha = '________________________________';
+  const linhaLonga = '____________________________________________';
+  const corTexto = [veic.cor, veic.combustivel].filter(Boolean).join(' ').toUpperCase();
+  const compradorNome = c.nome.toUpperCase();
+
+  const termo = `Pelo presente instrumento de confissão de dívida e avença, contida nos termos e forma subjacente, constituem entre si, justo e acertado fiel e valioso contrato parcelamento de dívida para aquisição de automóvel, com clausula de reserva de domínio, entre si: VENDEDOR/CREDOR(A): ${v.nome}, inscrito no CNPJ/MF sob o n ${v.cnpj}, residente e domiciliado à ${v.logradouro}, ${v.bairro}, N: ${v.numero}, Município de ${v.cidade}, Estado de ${v.estado} e PROMITENTE PAGADOR(A) DEVEDOR(A): ${compradorNome}, ${c.nacionalidade}, portador do RG: ${c.rg} inscrita no CPF/MF sob o N: CPF ${c.cpf} residente e domiciliado(a) À ${c.logradouro} N. ${c.numero} ${c.bairro}, Município de ${c.cidade}, Estado de ${c.estado} DO OBJETO DA AVENÇA/DÍVIDA: Mútuo utilizado na compra do automóvel, o veículo é entregue nesta data de ${dataPorExtenso(veic.dataEntrega)}, inspecionado pelo COMPRADOR de propriedade do vendedor(a) Marca /Modelo: ${veic.marcaModelo}, ANO/MODELO: ${veic.anoModelo}, cor ${corTexto}, Placa ${veic.placa}, RENAVAM ${veic.renavam}, CHASSI: ${veic.chassi}, Livre e desembaraçado de ônus.${garantia ? ' ' + garantia : ''} DÍVIDA CONFESSA: De forma livre, voluntária, consciente, a parte confitente reconhece que passará ser devedor do presente título executivo oferecido como garantia do pagamento veículo qualificado no item acima, adquirido da parte credora na importância de ${valorContrato(pg.valorTotal, true)} As partes concordam que o valor da dívida consignada no presente instrumento - título executivo - deverá ser paga de forma parcelada, nas condições abaixo descritas, ou mesmo, com a quitação integral a qualquer momento. Considerar-se-ão vencidas todas as parcelas sucessivas àquela que se achar vencida e não paga no prazo máximo de ${pg.diasVencimento} dias da data do pagamento. DOS ENCARGOS: (Juros Compensatórios) Para efeito de correção monetária, a parte credora está ciente e concordou com a aplicação de juros compensatórios sobre o valor tomado, no valor de ${pg.jurosMes}% ao mês, ${pg.jurosAno} % ao ano e em forma de capitalização (CC de 2002, art. 406 c/c o art. 161, § 1. °, do CTN). DA FORMA DE PAGAMENTO: A parte devedora pagará à parte credora o valor de ${valorContrato(pg.valorTotal, true)}, sendo ${montarFormaPagamentoContrato(pg)}. O pagamento deverá ser efetuado diretamente em uma das contas de titularidade da credora por chave pix ou boleto bancário. O pagamento de denominada parcela não justifica contumaz faz prova de quitação das parcelas anteriores. A prova do pagamento será somente por meio de recibo de pagamento. Em caso de inadimplência das obrigações haverá responsabilização do causador que passará a ser obrigado a arcar com os encargos seja na via administrativa e/ou judiciais.`;
+
+  const contrato = `CONTRATO DE COMPRA E VENDA DE VEÍCULOS COM CLAUSULA DE RESERVA DE DOMINIO O PRESENTE CONTRATO REGER-SE-Á PELAS SEGUINTES CLAUSULAS E CONDIÇÕES: 1ª – DA PROMEÇA DE PAGAMENTO: O devedor promete pagar a dívida, certa, liquida e exequível até a data do seu vencimento, mensalmente à credora ou a sua ordem por meio de crédito direito em conta corrente de sua titularidade ou em espécie no endereço comercial desta ou ainda, mediante pagamento do carnê de pagamento. 2ª – DO OBJETO E DO PREÇO: O presente instrumento formaliza em termos as obrigações sinalagmática entre direitos e deveres das partes contratantes, concernente a compra do veículo descrito acima em campo específico do termo de confissão de dívida, que deverá ser entre pela parte vendedora/credora e das disposições de tudo aquilo no termo de confisco de dívida dispõem sobre o valor do objeto e da forma de pagamento, uma vez que é parte integrante do presente contrato de compra e venda. 3ª - INADIMPLEMENTO: As partes ajustam as obrigações acima constituídas e se prometem entre si o fiel cumprimento das condições e pontualidade, sob pena de rescisão contratual com indenização de perdas e danos. Fica também ajustado no presente termo que qualquer atraso em qualquer uma das obrigações de pagamento, pagamento dos encargos legais e ou deterioração dolosa e acidental do bem acarretarão o vencimento antecipado de todas as demais parcelas vincendas e a liberalidade do credor promover a antecipação do vencimento de demais parcelas e encargos para a data de vencimento mais próximo sob pena de rescisão do presente contrato com a reintegração do automóvel ao credor e indenização de perdas e danos. 4º - DA RESERVA DE DOMINIO: Em virtude e por força do pacto “RESERVA DE DOMINIO” o credor expressamente institui com aquiescência do devedor que declara o aceite com a assinatura do acordo que ficará reservado o domínio pleno do veículo objeto deste contrato cuja transferência definitiva de direito ficará condicionada ao pagamento integral do preço ou de outras formas de extinção da obrigação validamente prevista no Código Civil. O devedor está ciente de que somente poderá exigir a transferência de propriedade via CRV – certificado de registro de veículo - com a apresentação dos recibos de pagamento de todas as parcelas assumidas. 5ª - DA VALIDADE: A validação dos direitos e deveres ficam reservadas a assinatura do presente instrumento, sendo certo e conhecido que neste ato a alienante/credora lhe transmite por tradição a posse precária do veículo, podendo, em caso de descumprimento de qualquer das condições assumidas, em especial destaque para aquelas concernentes ao pagamento e conservação do veículo, será requerido extrajudicialmente ou por meio de ação de judicial de busca e apreensão a reintegração de posso do veículo até o oferecimento de nova garantia ou nova negociação transigência e ou quitação da dívida. 6ª- DO JUROS, TARIFAS E CLAUSULAS PENAIS: O promitente e pagador fica previamente cientificado das taxas de juros, tarifas, correção monetária e clausulas penais concernentes ao contrato de parcelamento do preço pago ao veículo adquirido ficando responsabilizado na condição de devedor em qualquer hipótese de inadimplemento, impontualidade das prestações assumidas por força do presente termo de assunção de dívida mais indenização de perdas e danos comprovadamente produzidos em face do alienante/credora. 7ª - DOS EFEITOS DA INADIMPLENCIA IMPONTUALIDADE: O promissário pagador fica ciente de que em caso de ser necessário ação de cobrança extrajudicial, ou judicial fica autorizado imediatamente retomada do automóvel alienado em garantia da dívida bem como autoriza o distrato do acordo de compra e venda, fincando a alienante/credora encarregada da revenda/leilão do automóvel e a prestar contas ao alienante/credora do fruto da revenda e dos gastos inerentes ao distrato, cobranças, ações judiciais. Remanescendo crédito a alienante/credora se compromete a devolver os ativos ao promitente pagador. 8ª DA RESCISÃO E DA LIQUIDAÇÃO DA DÍVIDA: No caso de não se satisfazer o valor da dívida assumida pelo promitente pagador nos caso de revenda/leilão previsto no item 6ª do presente instrumento, a credora terá legalidade de continuar as cobranças do promitente pagador do saldo negativo. 9ª – DAS OBRIGAÇÕES ADMINISTRATIVAS E OBRIGACIONAIS: Registra-se que é de livre e espontânea escolha o veículo e acessórios nas atuais condições sendo ao promitente pagador orientado a refazer análise de procedência, análise de condições de uso e estado de conservação vez que após constar o aceite passará a assumir inteiramente as responsabilidades de manter o veículo com seus acessórios nos mesmíssimos estados de conservação e 2 2 funcionando, até final liquidação obrigacional, sendo-lhe vedado alegar futuramente condições relativas ao veículo ou a condições de pagamento da obrigação para se desonerar-se do quanto assumindo. 10ª - DAS OBRIGAÇÕES ADMINISTRATIVAS: O promitente pagador assume também, de forma exclusiva, total responsabilidade por impostos, taxas, multas, contribuições custas e despesas de qualquer natureza, relativas ao veículo em tela, obrigando-se, mais, a cumprir todas as exigências dos órgãos públicos. 11º - DAS RESPONSABILIDADES: O contraente, ficará encarregado do adimplemento total a alienante/credora de responsabilidade por procedimentos civis, criminais e fiscais, danos, prejuízos, desastres e acidentes, de quaisquer espécies, que venham a ocorrer com o veículo responsabilizando-se perante terceiros, por atos por si praticados, por seus prepostos e mandatários. 12ª - DO BEM FINANCIADO DADO EM GARANTIA: Este contrato, na forma do art. 129, 5° da Lei 6015, de 31 de dezembro de 1973, e em obediência de condições anteriores, será levado ao Registro de Títulos e Documentos do domicílio das partes contratantes, para doravante ser registrado junto ao DENATRAN a reserva de domínio nos quais será mantida até a liquidação da dívida e o cumprimento de todas as obrigações contratuais, ocasião em que será outorgada pela credora/alienante ordem expressa para seu cancelamento ou baixa. 13ª - FIEL DEPOSITÁRIO: O promitente pagador tem plena ciência e aceita assumir a condições de fiel depositário do bem dado em garantia da operação de parcelamento do preço, bem como, todas as responsabilidades assumidas pelo alienante/credora perante. 14ª – DA CAUSA DE VIOLAÇÃO CONTRATUAL - deixar de efetuar o pagamento de quaisquer prestações, nas datas de seus respectivos vencimentos - deixar de cumprir qualquer obrigação por ele expressamente assumida, nos termos deste contrato - ceder, alienar, gravar, transferir ou emprestar a terceiros o veículo em foco - deixar de proteger tal veículo contra quaisquer turbações de terceiros, reservados - infringir o disposto na cláusula 15ª - da clausula in vigilando: quando solicitado, recusar submeter o veículo à vistoria por representante à inspeção da alienante/vendedora - Se o promitente pagador se tornar insolvente - Se o promitente pagador mudando de residência, não comunicar tal fato, 16ª - DA IMPOSSIBILIDADE DE ALIENAÇÃO - Fica reservado apenas a alienante/credora, o direito de ceder, transferir e inclusive caucionar e descontar junto a terceiros, não só este contrato bem a posse do veículo objeto deste contrato: DAS OBSERVAÇÕES GERAIS: O presente contrato de compra e venda com confissão de dívida e ou promessa de pagamento parcelado tem por escopo força de título executivo judicial nos termos do artigo 784 do NCPC – Com base no artigo 525 do NCPC, havendo certeza da mora no pagamento das obrigações o credor poderá executar a cláusula de reserva de domínio passando a ficar na posse do bem até a arrematação. Por ser expressão da verdade, assinam as seguintes:`;
+
+  const vazio = { tipo: 'vazio' };
+  return [
+    { tipo: 'titulo', texto: 'TERMO DE CONFISSÃO DE DÍVIDA PROVENIENTE DE COMPRA DE VEÍCULO' },
+    { tipo: 'corpo', texto: termo },
+    vazio,
+    { tipo: 'assinatura', texto: localData },
+    vazio, vazio, vazio,
+    { tipo: 'assinatura', texto: linha },
+    { tipo: 'assinatura', texto: `${compradorNome} Comprador(a)` },
+    vazio, vazio, vazio,
+    { tipo: 'assinatura', texto: linha },
+    { tipo: 'assinatura', texto: v.nome },
+    { tipo: 'assinatura', texto: 'Vendedor(a)' },
+    vazio, vazio,
+    { tipo: 'corpo', texto: contrato },
+    vazio,
+    { tipo: 'assinatura', texto: localData },
+    vazio, vazio,
+    { tipo: 'assinatura', texto: linhaLonga },
+    { tipo: 'assinatura', texto: `${compradorNome} Comprador(a)` },
+    vazio, vazio,
+    { tipo: 'assinatura', texto: linhaLonga },
+    { tipo: 'assinatura', texto: v.nome },
+    { tipo: 'assinatura', texto: 'Vendedor(a)' }
+  ];
+}
+
+// ---------- Geração do arquivo .docx (OOXML dentro de um ZIP sem compressão) ----------
+function xmlEscape(texto) {
+  return String(texto ?? '')
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
+    .replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+}
+
+function paragrafoDocx(p) {
+  if (p.tipo === 'vazio') return '<w:p/>';
+  const texto = `<w:t xml:space="preserve">${xmlEscape(p.texto)}</w:t>`;
+  if (p.tipo === 'titulo') {
+    return `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:after="360" w:line="276" w:lineRule="auto"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="28"/><w:szCs w:val="28"/></w:rPr>${texto}</w:r></w:p>`;
+  }
+  const alinhamento = p.tipo === 'corpo' ? '<w:jc w:val="both"/>' : '';
+  return `<w:p><w:pPr>${alinhamento}<w:ind w:firstLine="709"/><w:spacing w:after="0" w:line="360" w:lineRule="auto"/></w:pPr><w:r>${texto}</w:r></w:p>`;
+}
+
+function montarArquivosDocx(paragrafos) {
+  const corpo = paragrafos.map(paragrafoDocx).join('');
+  const cabecalho = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+  return {
+    '[Content_Types].xml': `${cabecalho}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>`,
+    '_rels/.rels': `${cabecalho}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`,
+    'word/_rels/document.xml.rels': `${cabecalho}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`,
+    'word/styles.xml': `${cabecalho}<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:eastAsia="Arial" w:cs="Arial"/><w:sz w:val="24"/><w:szCs w:val="24"/><w:lang w:val="pt-BR"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="0"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style></w:styles>`,
+    'word/document.xml': `${cabecalho}<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${corpo}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1701" w:right="1134" w:bottom="1134" w:left="1701" w:header="709" w:footer="709" w:gutter="0"/></w:sectPr></w:body></w:document>`
+  };
+}
+
+const CRC32_TABELA = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+
+function crc32(bytes) {
+  let crc = 0xFFFFFFFF;
+  for (let i = 0; i < bytes.length; i++) crc = CRC32_TABELA[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+
+// ZIP no método "stored" (sem compressão): é o que basta para o Word abrir o .docx
+function criarZip(arquivos) {
+  const enc = new TextEncoder();
+  const agora = new Date();
+  const dosHora = (agora.getHours() << 11) | (agora.getMinutes() << 5) | Math.floor(agora.getSeconds() / 2);
+  const dosData = ((agora.getFullYear() - 1980) << 9) | ((agora.getMonth() + 1) << 5) | agora.getDate();
+  const locais = [];
+  const centrais = [];
+  let offset = 0;
+
+  for (const [nome, conteudo] of Object.entries(arquivos)) {
+    const nomeBytes = enc.encode(nome);
+    const dados = typeof conteudo === 'string' ? enc.encode(conteudo) : conteudo;
+    const crc = crc32(dados);
+
+    const local = new DataView(new ArrayBuffer(30));
+    local.setUint32(0, 0x04034b50, true);
+    local.setUint16(4, 20, true);
+    local.setUint16(6, 0x0800, true);
+    local.setUint16(8, 0, true);
+    local.setUint16(10, dosHora, true);
+    local.setUint16(12, dosData, true);
+    local.setUint32(14, crc, true);
+    local.setUint32(18, dados.length, true);
+    local.setUint32(22, dados.length, true);
+    local.setUint16(26, nomeBytes.length, true);
+    local.setUint16(28, 0, true);
+    locais.push(new Uint8Array(local.buffer), nomeBytes, dados);
+
+    const central = new DataView(new ArrayBuffer(46));
+    central.setUint32(0, 0x02014b50, true);
+    central.setUint16(4, 20, true);
+    central.setUint16(6, 20, true);
+    central.setUint16(8, 0x0800, true);
+    central.setUint16(10, 0, true);
+    central.setUint16(12, dosHora, true);
+    central.setUint16(14, dosData, true);
+    central.setUint32(16, crc, true);
+    central.setUint32(20, dados.length, true);
+    central.setUint32(24, dados.length, true);
+    central.setUint16(28, nomeBytes.length, true);
+    central.setUint32(42, offset, true);
+    centrais.push(new Uint8Array(central.buffer), nomeBytes);
+
+    offset += 30 + nomeBytes.length + dados.length;
+  }
+
+  const tamanhoCentral = centrais.reduce((acc, b) => acc + b.length, 0);
+  const qtd = Object.keys(arquivos).length;
+  const fim = new DataView(new ArrayBuffer(22));
+  fim.setUint32(0, 0x06054b50, true);
+  fim.setUint16(8, qtd, true);
+  fim.setUint16(10, qtd, true);
+  fim.setUint32(12, tamanhoCentral, true);
+  fim.setUint32(16, offset, true);
+
+  const partes = [...locais, ...centrais, new Uint8Array(fim.buffer)];
+  const saida = new Uint8Array(partes.reduce((acc, b) => acc + b.length, 0));
+  let pos = 0;
+  partes.forEach(b => { saida.set(b, pos); pos += b.length; });
+  return saida;
+}
+
+function gerarDocxContrato(dados) {
+  return criarZip(montarArquivosDocx(montarParagrafosContrato(dados)));
+}
+
+// ---------- Tela: assistente em 4 etapas ----------
+function loadContratoVendedor() {
+  try {
+    return { ...CONTRATO_VENDEDOR_PADRAO, ...(JSON.parse(localStorage.getItem(CONTRATO_VENDEDOR_STORAGE_KEY)) || {}) };
+  } catch (e) {
+    return { ...CONTRATO_VENDEDOR_PADRAO };
+  }
+}
+
+function saveContratoVendedor(config) {
+  try {
+    localStorage.setItem(CONTRATO_VENDEDOR_STORAGE_KEY, JSON.stringify(config));
+  } catch (e) {
+    console.warn('Não foi possível salvar os dados do vendedor:', e);
+  }
+}
+
+function setCtrValue(id, valor) {
+  const el = document.getElementById(id);
+  if (el) el.value = valor ?? '';
+}
+
+function getCtrValue(id) {
+  const el = document.getElementById(id);
+  return el ? String(el.value || '').trim() : '';
+}
+
+function formatarNumeroCampo(valor) {
+  const n = Number(valor) || 0;
+  return n ? n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '';
+}
+
+function openModalContract(carId = null) {
+  if (!requireFullAccess()) return;
+  const car = appData.veiculos.find(v => Number(v.id) === Number(carId || currentDetailCarId));
+  if (!car) {
+    showToast('Selecione um veículo para gerar o contrato.');
+    return;
+  }
+
+  const salvo = car.contrato || {};
+  const comp = salvo.comprador || {};
+  const pagSalvo = salvo.pagamento || {};
+  const veicSalvo = salvo.veiculo || {};
+  const vend = loadContratoVendedor();
+
+  setCtrValue('ctrVehId', car.id);
+  document.getElementById('ctrCarName').textContent = `${car.marca} ${car.modelo} • ${car.placa}`;
+
+  // Etapa 1: vendedor (fica salvo neste navegador)
+  setCtrValue('ctrVendNome', vend.nome);
+  setCtrValue('ctrVendCnpj', vend.cnpj);
+  setCtrValue('ctrVendLogradouro', vend.logradouro);
+  setCtrValue('ctrVendNumero', vend.numero);
+  setCtrValue('ctrVendBairro', vend.bairro);
+  setCtrValue('ctrVendCidade', vend.cidade);
+  setCtrValue('ctrVendEstado', vend.estado);
+
+  // Etapa 2: comprador (reaproveita o último contrato deste carro)
+  setCtrValue('ctrCompNome', comp.nome || car.comprador || '');
+  setCtrValue('ctrCompNacionalidade', comp.nacionalidade || 'Brasileiro(a)');
+  setCtrValue('ctrCompRg', comp.rg || '');
+  setCtrValue('ctrCompCpf', comp.cpf || '');
+  setCtrValue('ctrCompLogradouro', comp.logradouro || '');
+  setCtrValue('ctrCompNumero', comp.numero || '');
+  setCtrValue('ctrCompBairro', comp.bairro || '');
+  setCtrValue('ctrCompCidade', comp.cidade || vend.cidade);
+  setCtrValue('ctrCompEstado', comp.estado || vend.estado);
+
+  // Etapa 3: veículo (vem do cadastro)
+  setCtrValue('ctrVeicMarcaModelo', veicSalvo.marcaModelo || `${car.marca} ${car.modelo}`.trim());
+  setCtrValue('ctrVeicAnoModelo', veicSalvo.anoModelo || (car.ano ? String(car.ano) : ''));
+  setCtrValue('ctrVeicCor', veicSalvo.cor || car.cor || '');
+  setCtrValue('ctrVeicCombustivel', veicSalvo.combustivel || car.combustivel || '');
+  setCtrValue('ctrVeicPlaca', car.placa || '');
+  setCtrValue('ctrVeicRenavam', car.renavam || '');
+  setCtrValue('ctrVeicChassi', car.chassi || car.chassis || '');
+  setCtrValue('ctrVeicDataEntrega', veicSalvo.dataEntrega || car.dataVenda || new Date().toISOString().slice(0, 10));
+  setCtrValue('ctrVeicGarantiaDias', veicSalvo.garantiaDias ?? 90);
+  setCtrValue('ctrVeicGarantiaItens', veicSalvo.garantiaItens || 'no câmbio e no motor');
+
+  // Etapa 4: pagamento (vem da venda registrada)
+  const parcelasCarro = appData.pagamentos
+    .filter(p => Number(p.veiculoId) === Number(car.id))
+    .sort((a, b) => Number(a.numeroParcela) - Number(b.numeroParcela));
+  setCtrValue('ctrPagTotal', formatarNumeroCampo(pagSalvo.valorTotal ?? (car.valorVenda || car.valorFipe)));
+  setCtrValue('ctrPagEntrada', formatarNumeroCampo(pagSalvo.entrada ?? car.valorEntrada));
+  setCtrValue('ctrPagNumParcelas', pagSalvo.numParcelas ?? (car.numParcelas || ''));
+  setCtrValue('ctrPagValorParcela', formatarNumeroCampo(pagSalvo.valorParcela ?? car.valorParcela));
+  setCtrValue('ctrPagPrimeiroVenc', pagSalvo.primeiroVencimento || (parcelasCarro[0] && parcelasCarro[0].dataVencimento) || '');
+  setCtrValue('ctrPagJurosMes', pagSalvo.jurosMes || vend.jurosMes);
+  setCtrValue('ctrPagJurosAno', pagSalvo.jurosAno || vend.jurosAno);
+  setCtrValue('ctrPagDiasVenc', pagSalvo.diasVencimento ?? vend.diasVencimento);
+  setCtrValue('ctrDataAssinatura', salvo.dataAssinatura || '');
+
+  document.getElementById('ctrIntermediariasList').innerHTML = '';
+  (pagSalvo.intermediarias || []).forEach(p => addContratoIntermediaria(p));
+
+  goToContratoStep(1);
+  updateContratoResumo();
+  openModal('modalContract');
+}
+
+function addContratoIntermediaria(parcela = {}) {
+  const lista = document.getElementById('ctrIntermediariasList');
+  const linha = document.createElement('div');
+  linha.className = 'ctr-intermediaria';
+  linha.innerHTML = `
+    <input type="text" inputmode="decimal" class="input-control ctr-int-valor" placeholder="Valor (ex: 11.000,00)" required>
+    <input type="date" class="input-control ctr-int-data" required>
+    <button type="button" class="btn btn-danger btn-sm" title="Remover parcela">&times;</button>
+  `;
+  linha.querySelector('.ctr-int-valor').value = formatarNumeroCampo(parcela.valor);
+  linha.querySelector('.ctr-int-data').value = parcela.data || '';
+  linha.querySelector('.ctr-int-valor').addEventListener('input', updateContratoResumo);
+  linha.querySelector('button').addEventListener('click', () => { linha.remove(); updateContratoResumo(); });
+  lista.appendChild(linha);
+  updateContratoResumo();
+}
+
+function onContratoJurosMesChange() {
+  const mes = parseNumeroBR(getCtrValue('ctrPagJurosMes'));
+  if (mes > 0) setCtrValue('ctrPagJurosAno', formatarPercentual((Math.pow(1 + mes / 100, 12) - 1) * 100, 2));
+}
+
+function onContratoCpfInput(input) {
+  const digitos = input.value.replace(/\D/g, '').slice(0, 11);
+  let f = digitos;
+  if (digitos.length > 9) f = `${digitos.slice(0, 3)}.${digitos.slice(3, 6)}.${digitos.slice(6, 9)}-${digitos.slice(9)}`;
+  else if (digitos.length > 6) f = `${digitos.slice(0, 3)}.${digitos.slice(3, 6)}.${digitos.slice(6)}`;
+  else if (digitos.length > 3) f = `${digitos.slice(0, 3)}.${digitos.slice(3)}`;
+  input.value = f;
+}
+
+function goToContratoStep(passo) {
+  contratoPasso = Math.min(Math.max(passo, 1), CONTRATO_TOTAL_PASSOS);
+  document.querySelectorAll('#modalContract .ctr-step').forEach(sec => {
+    sec.style.display = Number(sec.dataset.step) === contratoPasso ? 'block' : 'none';
+  });
+  document.querySelectorAll('#modalContract .wizard-step').forEach(ind => {
+    const n = Number(ind.dataset.step);
+    ind.classList.toggle('active', n === contratoPasso);
+    ind.classList.toggle('done', n < contratoPasso);
+  });
+  const ultimo = contratoPasso === CONTRATO_TOTAL_PASSOS;
+  document.getElementById('ctrBtnVoltar').style.visibility = contratoPasso === 1 ? 'hidden' : 'visible';
+  document.getElementById('ctrBtnAvancar').style.display = ultimo ? 'none' : 'inline-flex';
+  document.getElementById('ctrBtnGerar').style.display = ultimo ? 'inline-flex' : 'none';
+  if (ultimo) updateContratoResumo();
+  const primeiro = document.querySelector(`#modalContract .ctr-step[data-step="${contratoPasso}"] input`);
+  if (primeiro) setTimeout(() => primeiro.focus(), 50);
+}
+
+function validarPassoContrato(passo, mostrar = true) {
+  const secao = document.querySelector(`#modalContract .ctr-step[data-step="${passo}"]`);
+  const campos = secao ? Array.from(secao.querySelectorAll('input, select')) : [];
+  for (const campo of campos) {
+    if (!campo.checkValidity()) {
+      if (mostrar) campo.reportValidity();
+      return false;
+    }
+  }
+  if (passo === 2 && !cpfValido(getCtrValue('ctrCompCpf'))) {
+    if (mostrar) {
+      alert('CPF do comprador inválido. Confira os números.');
+      document.getElementById('ctrCompCpf').focus();
+    }
+    return false;
+  }
+  if (passo === 4) {
+    if (parseNumeroBR(getCtrValue('ctrPagTotal')) <= 0) {
+      if (mostrar) alert('Informe o valor total do veículo.');
+      return false;
+    }
+    const numParcelas = Number(getCtrValue('ctrPagNumParcelas')) || 0;
+    if (numParcelas > 0 && (parseNumeroBR(getCtrValue('ctrPagValorParcela')) <= 0 || !getCtrValue('ctrPagPrimeiroVenc'))) {
+      if (mostrar) alert('Informe o valor e o vencimento da primeira parcela mensal.');
+      return false;
+    }
+  }
+  return true;
+}
+
+function nextContratoStep() {
+  if (!validarPassoContrato(contratoPasso)) return;
+  goToContratoStep(contratoPasso + 1);
+}
+
+function prevContratoStep() {
+  goToContratoStep(contratoPasso - 1);
+}
+
+function coletarDadosContrato() {
+  const intermediarias = Array.from(document.querySelectorAll('#ctrIntermediariasList .ctr-intermediaria')).map(linha => ({
+    valor: parseNumeroBR(linha.querySelector('.ctr-int-valor').value),
+    data: linha.querySelector('.ctr-int-data').value
+  })).filter(p => p.valor > 0);
+
+  return {
+    vendedor: {
+      nome: getCtrValue('ctrVendNome'),
+      cnpj: getCtrValue('ctrVendCnpj'),
+      logradouro: getCtrValue('ctrVendLogradouro'),
+      numero: getCtrValue('ctrVendNumero'),
+      bairro: getCtrValue('ctrVendBairro'),
+      cidade: getCtrValue('ctrVendCidade'),
+      estado: getCtrValue('ctrVendEstado')
+    },
+    comprador: {
+      nome: getCtrValue('ctrCompNome'),
+      nacionalidade: getCtrValue('ctrCompNacionalidade'),
+      rg: getCtrValue('ctrCompRg'),
+      cpf: formatarCpf(getCtrValue('ctrCompCpf')),
+      logradouro: getCtrValue('ctrCompLogradouro'),
+      numero: getCtrValue('ctrCompNumero'),
+      bairro: getCtrValue('ctrCompBairro'),
+      cidade: getCtrValue('ctrCompCidade'),
+      estado: getCtrValue('ctrCompEstado')
+    },
+    veiculo: {
+      marcaModelo: getCtrValue('ctrVeicMarcaModelo'),
+      anoModelo: getCtrValue('ctrVeicAnoModelo'),
+      cor: getCtrValue('ctrVeicCor'),
+      combustivel: getCtrValue('ctrVeicCombustivel'),
+      placa: getCtrValue('ctrVeicPlaca').toUpperCase(),
+      renavam: getCtrValue('ctrVeicRenavam'),
+      chassi: getCtrValue('ctrVeicChassi').toUpperCase(),
+      dataEntrega: getCtrValue('ctrVeicDataEntrega'),
+      garantiaDias: Number(getCtrValue('ctrVeicGarantiaDias')) || 0,
+      garantiaItens: getCtrValue('ctrVeicGarantiaItens')
+    },
+    pagamento: {
+      valorTotal: parseNumeroBR(getCtrValue('ctrPagTotal')),
+      entrada: parseNumeroBR(getCtrValue('ctrPagEntrada')),
+      intermediarias,
+      numParcelas: Number(getCtrValue('ctrPagNumParcelas')) || 0,
+      valorParcela: parseNumeroBR(getCtrValue('ctrPagValorParcela')),
+      primeiroVencimento: getCtrValue('ctrPagPrimeiroVenc'),
+      jurosMes: getCtrValue('ctrPagJurosMes'),
+      jurosAno: getCtrValue('ctrPagJurosAno'),
+      diasVencimento: Number(getCtrValue('ctrPagDiasVenc')) || 0
+    },
+    dataAssinatura: getCtrValue('ctrDataAssinatura')
+  };
+}
+
+function somaPagamentoContrato(pg) {
+  return pg.entrada + pg.intermediarias.reduce((acc, p) => acc + p.valor, 0) + pg.numParcelas * pg.valorParcela;
+}
+
+function updateContratoResumo() {
+  const box = document.getElementById('ctrResumo');
+  if (!box) return;
+  const pg = coletarDadosContrato().pagamento;
+  const soma = somaPagamentoContrato(pg);
+  const totalIntermediarias = pg.intermediarias.reduce((a, p) => a + p.valor, 0);
+  const diferenca = Math.round((pg.valorTotal - soma) * 100) / 100;
+  const ok = Math.abs(diferenca) < 0.01;
+  box.style.borderLeftColor = ok ? 'var(--success)' : 'var(--warning)';
+  box.innerHTML = `
+    Entrada ${formatMoney(pg.entrada)} + ${pg.intermediarias.length} intermediária(s) ${formatMoney(totalIntermediarias)}
+    + ${pg.numParcelas}x ${formatMoney(pg.valorParcela)} = <strong>${formatMoney(soma)}</strong><br>
+    ${ok
+      ? `<strong style="color: var(--success);">✅ Confere com o valor total de ${formatMoney(pg.valorTotal)}.</strong>`
+      : `<strong style="color: var(--warning);">⚠️ Diferença de ${formatMoney(diferenca)} em relação ao valor total (${formatMoney(pg.valorTotal)}).</strong>`}
+  `;
+}
+
+function nomeArquivoContrato(dados) {
+  const base = `Contrato ${dados.veiculo.placa} - ${dados.comprador.nome}`
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^A-Za-z0-9 .-]/g, '').replace(/\s+/g, ' ').trim();
+  return `${base || 'Contrato'}.docx`;
+}
+
+function handleGenerateContract(e) {
+  e.preventDefault();
+  if (!requireFullAccess()) return;
+  for (let passo = 1; passo <= CONTRATO_TOTAL_PASSOS; passo++) {
+    if (!validarPassoContrato(passo, false)) {
+      goToContratoStep(passo);
+      setTimeout(() => validarPassoContrato(passo), 60);
+      return;
+    }
+  }
+
+  const dados = coletarDadosContrato();
+  const soma = somaPagamentoContrato(dados.pagamento);
+  if (Math.abs(dados.pagamento.valorTotal - soma) >= 0.01) {
+    const ok = confirm(`A soma da entrada e das parcelas (${formatMoney(soma)}) é diferente do valor total (${formatMoney(dados.pagamento.valorTotal)}).\n\nGerar o contrato mesmo assim?`);
+    if (!ok) return;
+  }
+
+  const blob = new Blob([gerarDocxContrato(dados)], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = nomeArquivoContrato(dados);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+
+  // Guarda vendedor e juros para os próximos contratos, e os dados do comprador no veículo
+  saveContratoVendedor({
+    ...dados.vendedor,
+    jurosMes: dados.pagamento.jurosMes,
+    jurosAno: dados.pagamento.jurosAno,
+    diasVencimento: dados.pagamento.diasVencimento
+  });
+  const car = appData.veiculos.find(v => Number(v.id) === Number(getCtrValue('ctrVehId')));
+  if (car) {
+    car.contrato = {
+      comprador: dados.comprador,
+      veiculo: {
+        marcaModelo: dados.veiculo.marcaModelo,
+        anoModelo: dados.veiculo.anoModelo,
+        cor: dados.veiculo.cor,
+        combustivel: dados.veiculo.combustivel,
+        dataEntrega: dados.veiculo.dataEntrega,
+        garantiaDias: dados.veiculo.garantiaDias,
+        garantiaItens: dados.veiculo.garantiaItens
+      },
+      pagamento: dados.pagamento,
+      dataAssinatura: dados.dataAssinatura,
+      geradoEm: new Date().toISOString()
+    };
+    saveDatabase();
+  }
+
+  closeModal('modalContract');
+  showToast('Contrato gerado! O arquivo .docx foi baixado.');
 }

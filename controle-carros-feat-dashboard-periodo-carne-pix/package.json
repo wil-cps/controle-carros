@@ -1,0 +1,16 @@
+{
+  "name": "controle-carros",
+  "version": "2.0.0",
+  "private": true,
+  "description": "AutoManage Toledo - controle de compra e venda de veículos com servidor Node.js + SQLite",
+  "main": "server/server.js",
+  "scripts": {
+    "start": "node server/server.js"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}
