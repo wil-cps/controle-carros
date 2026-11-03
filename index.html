@@ -689,6 +689,10 @@
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg>
               Registrar Venda
             </button>
+            <button class="btn btn-secondary admin-only" id="btnContractAction" onclick="openModalContract()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" x2="16" y1="13" y2="13"/><line x1="8" x2="13" y1="17" y2="17"/></svg>
+              Gerar Contrato
+            </button>
             <button class="btn btn-primary" onclick="openModalAddExpenseForCurrentCar()">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg>
               Adicionar Despesa
@@ -1688,6 +1692,241 @@
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" onclick="closeModal('modalCarnetPix')">Cancelar</button>
           <button type="submit" class="btn btn-primary" id="btnGenerateCarnet">Gerar Carnê</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ====================================================================
+       MODAL: GERAR CONTRATO (.docx) - ASSISTENTE EM ETAPAS
+       ==================================================================== -->
+  <div class="modal-backdrop" id="modalContract">
+    <div class="modal-window modal-window-wide">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title">📄 Gerar Contrato de Compra e Venda</h3>
+          <small id="ctrCarName" style="color: var(--text-dim);"></small>
+        </div>
+        <button class="modal-close-btn" onclick="closeModal('modalContract')">&times;</button>
+      </div>
+      <form id="formContract" onsubmit="handleGenerateContract(event)" novalidate>
+        <input type="hidden" id="ctrVehId">
+        <div class="modal-body">
+          <div class="wizard-steps">
+            <div class="wizard-step" data-step="1"><span>1</span> Vendedor</div>
+            <div class="wizard-step" data-step="2"><span>2</span> Comprador</div>
+            <div class="wizard-step" data-step="3"><span>3</span> Veículo</div>
+            <div class="wizard-step" data-step="4"><span>4</span> Pagamento</div>
+          </div>
+
+          <!-- Etapa 1: Vendedor -->
+          <section class="ctr-step" data-step="1">
+            <p class="ctr-step-hint">Dados da loja (vendedor/credor). Ficam salvos neste navegador para os próximos contratos.</p>
+            <div class="form-grid-2">
+              <div class="form-group">
+                <label for="ctrVendNome">Razão social *</label>
+                <input type="text" id="ctrVendNome" class="input-control" required>
+              </div>
+              <div class="form-group">
+                <label for="ctrVendCnpj">CNPJ *</label>
+                <input type="text" id="ctrVendCnpj" class="input-control" required placeholder="00.000.000/0000-00">
+              </div>
+            </div>
+            <div class="form-grid-3">
+              <div class="form-group" style="grid-column: span 2;">
+                <label for="ctrVendLogradouro">Endereço (rua) *</label>
+                <input type="text" id="ctrVendLogradouro" class="input-control" required>
+              </div>
+              <div class="form-group">
+                <label for="ctrVendNumero">Número *</label>
+                <input type="text" id="ctrVendNumero" class="input-control" required>
+              </div>
+            </div>
+            <div class="form-grid-3">
+              <div class="form-group">
+                <label for="ctrVendBairro">Bairro *</label>
+                <input type="text" id="ctrVendBairro" class="input-control" required>
+              </div>
+              <div class="form-group">
+                <label for="ctrVendCidade">Cidade *</label>
+                <input type="text" id="ctrVendCidade" class="input-control" required>
+              </div>
+              <div class="form-group">
+                <label for="ctrVendEstado">Estado *</label>
+                <input type="text" id="ctrVendEstado" class="input-control" required placeholder="São Paulo">
+              </div>
+            </div>
+          </section>
+
+          <!-- Etapa 2: Comprador -->
+          <section class="ctr-step" data-step="2">
+            <p class="ctr-step-hint">Dados do comprador (promitente pagador/devedor).</p>
+            <div class="form-grid-2">
+              <div class="form-group">
+                <label for="ctrCompNome">Nome completo *</label>
+                <input type="text" id="ctrCompNome" class="input-control" required>
+              </div>
+              <div class="form-group">
+                <label for="ctrCompNacionalidade">Nacionalidade *</label>
+                <input type="text" id="ctrCompNacionalidade" class="input-control" required>
+              </div>
+            </div>
+            <div class="form-grid-2">
+              <div class="form-group">
+                <label for="ctrCompRg">RG com órgão emissor *</label>
+                <input type="text" id="ctrCompRg" class="input-control" required placeholder="Ex: 57.603.134 SSP/PE">
+              </div>
+              <div class="form-group">
+                <label for="ctrCompCpf">CPF *</label>
+                <input type="text" id="ctrCompCpf" class="input-control" required inputmode="numeric" placeholder="000.000.000-00" oninput="onContratoCpfInput(this)">
+              </div>
+            </div>
+            <div class="form-grid-3">
+              <div class="form-group" style="grid-column: span 2;">
+                <label for="ctrCompLogradouro">Endereço (rua) *</label>
+                <input type="text" id="ctrCompLogradouro" class="input-control" required placeholder="Ex: Rua Domingos Lima Dias">
+              </div>
+              <div class="form-group">
+                <label for="ctrCompNumero">Número *</label>
+                <input type="text" id="ctrCompNumero" class="input-control" required>
+              </div>
+            </div>
+            <div class="form-grid-3">
+              <div class="form-group">
+                <label for="ctrCompBairro">Bairro *</label>
+                <input type="text" id="ctrCompBairro" class="input-control" required>
+              </div>
+              <div class="form-group">
+                <label for="ctrCompCidade">Cidade *</label>
+                <input type="text" id="ctrCompCidade" class="input-control" required>
+              </div>
+              <div class="form-group">
+                <label for="ctrCompEstado">Estado *</label>
+                <input type="text" id="ctrCompEstado" class="input-control" required>
+              </div>
+            </div>
+          </section>
+
+          <!-- Etapa 3: Veículo -->
+          <section class="ctr-step" data-step="3">
+            <p class="ctr-step-hint">Preenchido com o cadastro do veículo. Confira e ajuste se precisar.</p>
+            <div class="form-grid-2">
+              <div class="form-group">
+                <label for="ctrVeicMarcaModelo">Marca / Modelo *</label>
+                <input type="text" id="ctrVeicMarcaModelo" class="input-control" required>
+              </div>
+              <div class="form-group">
+                <label for="ctrVeicAnoModelo">Ano / Modelo *</label>
+                <input type="text" id="ctrVeicAnoModelo" class="input-control" required placeholder="Ex: 2021/2022">
+              </div>
+            </div>
+            <div class="form-grid-3">
+              <div class="form-group">
+                <label for="ctrVeicCor">Cor *</label>
+                <input type="text" id="ctrVeicCor" class="input-control" required>
+              </div>
+              <div class="form-group">
+                <label for="ctrVeicCombustivel">Combustível</label>
+                <input type="text" id="ctrVeicCombustivel" class="input-control">
+              </div>
+              <div class="form-group">
+                <label for="ctrVeicPlaca">Placa *</label>
+                <input type="text" id="ctrVeicPlaca" class="input-control" required>
+              </div>
+            </div>
+            <div class="form-grid-2">
+              <div class="form-group">
+                <label for="ctrVeicRenavam">RENAVAM *</label>
+                <input type="text" id="ctrVeicRenavam" class="input-control" required>
+              </div>
+              <div class="form-group">
+                <label for="ctrVeicChassi">Chassi *</label>
+                <input type="text" id="ctrVeicChassi" class="input-control" required>
+              </div>
+            </div>
+            <div class="form-grid-3">
+              <div class="form-group">
+                <label for="ctrVeicDataEntrega">Data de entrega *</label>
+                <input type="date" id="ctrVeicDataEntrega" class="input-control" required>
+              </div>
+              <div class="form-group">
+                <label for="ctrVeicGarantiaDias">Garantia (dias)</label>
+                <input type="number" id="ctrVeicGarantiaDias" class="input-control" min="0" step="1" placeholder="0 = sem garantia">
+              </div>
+              <div class="form-group">
+                <label for="ctrVeicGarantiaItens">Garantia cobre</label>
+                <input type="text" id="ctrVeicGarantiaItens" class="input-control" placeholder="no câmbio e no motor">
+              </div>
+            </div>
+          </section>
+
+          <!-- Etapa 4: Pagamento -->
+          <section class="ctr-step" data-step="4">
+            <p class="ctr-step-hint">Valores em reais. Preenchido com a venda registrada, quando houver.</p>
+            <div class="form-grid-2">
+              <div class="form-group">
+                <label for="ctrPagTotal">Valor total do veículo (R$) *</label>
+                <input type="text" id="ctrPagTotal" class="input-control" required inputmode="decimal" placeholder="148.500,00" oninput="updateContratoResumo()">
+              </div>
+              <div class="form-group">
+                <label for="ctrPagEntrada">Entrada (R$)</label>
+                <input type="text" id="ctrPagEntrada" class="input-control" inputmode="decimal" placeholder="20.000,00" oninput="updateContratoResumo()">
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>Parcelas intermediárias (valores avulsos com data própria)</label>
+              <div id="ctrIntermediariasList"></div>
+              <button type="button" class="btn btn-secondary btn-sm" onclick="addContratoIntermediaria()" style="align-self: flex-start;">+ Adicionar parcela intermediária</button>
+            </div>
+
+            <div class="form-grid-3">
+              <div class="form-group">
+                <label for="ctrPagNumParcelas">Nº de parcelas mensais</label>
+                <input type="number" id="ctrPagNumParcelas" class="input-control" min="0" step="1" oninput="updateContratoResumo()">
+              </div>
+              <div class="form-group">
+                <label for="ctrPagValorParcela">Valor da parcela (R$)</label>
+                <input type="text" id="ctrPagValorParcela" class="input-control" inputmode="decimal" placeholder="2.500,00" oninput="updateContratoResumo()">
+              </div>
+              <div class="form-group">
+                <label for="ctrPagPrimeiroVenc">1º vencimento</label>
+                <input type="date" id="ctrPagPrimeiroVenc" class="input-control">
+              </div>
+            </div>
+
+            <div class="form-grid-3">
+              <div class="form-group">
+                <label for="ctrPagJurosMes">Juros ao mês (%) *</label>
+                <input type="text" id="ctrPagJurosMes" class="input-control" required inputmode="decimal" onchange="onContratoJurosMesChange()">
+              </div>
+              <div class="form-group">
+                <label for="ctrPagJurosAno">Juros ao ano (%) *</label>
+                <input type="text" id="ctrPagJurosAno" class="input-control" required inputmode="decimal">
+              </div>
+              <div class="form-group">
+                <label for="ctrPagDiasVenc">Dias para vencimento antecipado *</label>
+                <input type="number" id="ctrPagDiasVenc" class="input-control" required min="0" step="1">
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="ctrDataAssinatura">Data da assinatura</label>
+              <input type="date" id="ctrDataAssinatura" class="input-control" style="max-width: 220px;">
+              <small style="color: var(--text-dim);">Deixe em branco para sair "____/____/____" e preencher à mão.</small>
+            </div>
+
+            <div id="ctrResumo" class="ctr-resumo"></div>
+          </section>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" id="ctrBtnVoltar" onclick="prevContratoStep()">&larr; Voltar</button>
+          <div style="display: flex; gap: 10px;">
+            <button type="button" class="btn btn-secondary" onclick="closeModal('modalContract')">Cancelar</button>
+            <button type="button" class="btn btn-primary" id="ctrBtnAvancar" onclick="nextContratoStep()">Avançar &rarr;</button>
+            <button type="submit" class="btn btn-success" id="ctrBtnGerar" style="display: none;">Gerar contrato (.docx)</button>
+          </div>
         </div>
       </form>
     </div>
