@@ -35,104 +35,89 @@ let chartCategoriasInstance = null;
 let dashboardPeriod = { tipo: 'tudo', inicio: '', fim: '' };
 
 // ============================================================================
-// REPOSITÓRIO DIGITAL DE ARQUIVOS E FOTOS (INDEXEDDB STORAGE ENGINE)
+// COMUNICAÇÃO COM O SERVIDOR (API)
+// ============================================================================
+let currentUser = null;      // { id, nome, login, perfil }
+let dataVersion = 0;         // versão dos dados no servidor (controle de concorrência)
+let availableSocios = [];    // usuários que podem ser sócios de um veículo
+let dataOrigin = '';         // 'planilha' quando o servidor ainda está com a base original
+
+async function apiFetch(url, options = {}) {
+  const res = await fetch(url, {
+    credentials: 'same-origin',
+    ...options,
+    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }
+  });
+  let body = null;
+  try {
+    body = await res.json();
+  } catch (e) {
+    body = null;
+  }
+  if (!res.ok) {
+    const err = new Error((body && body.erro) || `Erro ${res.status} ao comunicar com o servidor.`);
+    err.status = res.status;
+    err.body = body;
+    if (res.status === 401 && !url.startsWith('/api/auth')) handleSessionExpired();
+    throw err;
+  }
+  return body;
+}
+
+function isFullUser() {
+  return !!currentUser && currentUser.perfil === 'full';
+}
+
+// Bloqueia ações de edição para o perfil de visualização
+function requireFullAccess() {
+  if (isFullUser()) return true;
+  showToast('Seu perfil é somente de visualização.');
+  return false;
+}
+
+// ============================================================================
+// REPOSITÓRIO DIGITAL DE ARQUIVOS E FOTOS (ARMAZENADO NO SERVIDOR)
 // ============================================================================
 const AppFileRepo = {
-  dbName: 'AutoManageRepoDB_v1',
-  storeName: 'arquivos',
-  db: null,
-
   async init() {
-    return new Promise((resolve) => {
-      try {
-        const req = indexedDB.open(this.dbName, 1);
-        req.onupgradeneeded = (e) => {
-          const database = e.target.result;
-          if (!database.objectStoreNames.contains(this.storeName)) {
-            database.createObjectStore(this.storeName, { keyPath: 'id' });
-          }
-        };
-        req.onsuccess = (e) => {
-          this.db = e.target.result;
-          resolve(true);
-        };
-        req.onerror = () => {
-          console.warn('IndexedDB indisponível, usando fallback em memória.');
-          resolve(false);
-        };
-      } catch (err) {
-        console.warn('Erro ao abrir IndexedDB:', err);
-        resolve(false);
-      }
-    });
+    return true;
   },
 
   async salvar(id, fileData) {
-    if (!this.db) await this.init();
-    if (!this.db) return false;
-    return new Promise((resolve) => {
-      try {
-        const tx = this.db.transaction([this.storeName], 'readwrite');
-        const store = tx.objectStore(this.storeName);
-        store.put({ id: Number(id), ...fileData });
-        tx.oncomplete = () => resolve(true);
-        tx.onerror = () => resolve(false);
-      } catch (e) {
-        resolve(false);
-      }
-    });
+    try {
+      await apiFetch(`/api/arquivos/${Number(id)}`, { method: 'PUT', body: JSON.stringify(fileData) });
+      return true;
+    } catch (err) {
+      console.error('Erro ao enviar arquivo:', err);
+      showToast(err.message);
+      return false;
+    }
   },
 
   async obter(id) {
-    if (!this.db) await this.init();
-    if (!this.db) return null;
-    return new Promise((resolve) => {
-      try {
-        const tx = this.db.transaction([this.storeName], 'readonly');
-        const store = tx.objectStore(this.storeName);
-        const req = store.get(Number(id));
-        req.onsuccess = (e) => resolve(e.target.result || null);
-        req.onerror = () => resolve(null);
-      } catch (e) {
-        resolve(null);
-      }
-    });
+    try {
+      return await apiFetch(`/api/arquivos/${Number(id)}`);
+    } catch (err) {
+      return null;
+    }
   },
 
   async excluir(id) {
-    if (!this.db) await this.init();
-    if (!this.db) return false;
-    return new Promise((resolve) => {
-      try {
-        const tx = this.db.transaction([this.storeName], 'readwrite');
-        const store = tx.objectStore(this.storeName);
-        store.delete(Number(id));
-        tx.oncomplete = () => resolve(true);
-        tx.onerror = () => resolve(false);
-      } catch (e) {
-        resolve(false);
-      }
-    });
+    try {
+      await apiFetch(`/api/arquivos/${Number(id)}`, { method: 'DELETE' });
+      return true;
+    } catch (err) {
+      return false;
+    }
   },
 
   async calcularTotalBytes() {
-    if (!this.db) await this.init();
-    if (!this.db) return 0;
-    return new Promise((resolve) => {
-      try {
-        const tx = this.db.transaction([this.storeName], 'readonly');
-        const store = tx.objectStore(this.storeName);
-        const req = store.getAll();
-        req.onsuccess = (e) => {
-          const list = e.target.result || [];
-          const total = list.reduce((acc, item) => acc + (Number(item.tamanhoBytes) || (item.dataBase64 ? Math.round(item.dataBase64.length * 0.75) : 0)), 0);
-          resolve(total);
-        };
-        req.onerror = () => resolve(0);
-      } catch (e) {
-        resolve(0);
-      }
-    });
+    try {
+      const { totalBytes } = await apiFetch('/api/arquivos-total');
+      return Number(totalBytes) || 0;
+    } catch (err) {
+      return 0;
+    }
   }
 };
 
@@ -144,9 +129,340 @@ let currentCameraFacing = 'environment'; // 'environment' (traseira) ou 'user' (
 // ============================================================================
 document.addEventListener('DOMContentLoaded', () => {
   initTheme();
-  loadDatabase();
-  initApp();
+  bootAuth();
 });
+
+// ============================================================================
+// LOGIN E SESSÃO
+// ============================================================================
+async function bootAuth() {
+  try {
+    const status = await apiFetch('/api/auth/status');
+    if (status.usuario) {
+      await startSession(status.usuario);
+    } else {
+      showAuthScreen();
+    }
+  } catch (err) {
+    showAuthScreen('Não foi possível conectar ao servidor. Verifique se ele está rodando (npm start).');
+  }
+}
+
+function showAuthScreen(errorMessage = '') {
+  document.body.classList.add('auth-locked');
+  document.getElementById('authScreen').style.display = 'flex';
+  document.getElementById('authLoginForm').style.display = 'flex';
+  document.getElementById('authSubtitle').textContent = 'Entre com seu login e senha.';
+  setAuthError(errorMessage);
+  setTimeout(() => document.getElementById('loginUsuario').focus(), 50);
+}
+
+function setAuthError(message) {
+  const box = document.getElementById('authError');
+  box.textContent = message;
+  box.style.display = message ? 'block' : 'none';
+}
+
+function hideAuthScreen() {
+  document.body.classList.remove('auth-locked');
+  document.getElementById('authScreen').style.display = 'none';
+  document.getElementById('authLoginForm').reset();
+  setAuthError('');
+}
+
+async function handleLogin(e) {
+  e.preventDefault();
+  const btn = document.getElementById('btnLogin');
+  btn.disabled = true;
+  try {
+    const { usuario } = await apiFetch('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({
+        login: document.getElementById('loginUsuario').value.trim(),
+        senha: document.getElementById('loginSenha').value
+      })
+    });
+    await startSession(usuario);
+  } catch (err) {
+    setAuthError(err.message);
+    document.getElementById('loginSenha').value = '';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function startSession(usuario) {
+  currentUser = usuario;
+  applyUserInterface();
+
+  // Senha padrão ou provisória: troca obrigatória antes de liberar o sistema
+  if (currentUser.trocarSenha) {
+    document.getElementById('authLoginForm').style.display = 'none';
+    document.getElementById('authSubtitle').textContent = 'Defina uma nova senha para continuar.';
+    setAuthError('');
+    openModalChangePassword(true);
+    return;
+  }
+
+  try {
+    await loadDatabase();
+  } catch (err) {
+    if (err.status !== 401) showAuthScreen(err.message);
+    return;
+  }
+  hideAuthScreen();
+  initApp();
+  switchView('dashboard');
+  await offerBrowserDataImport();
+}
+
+async function logout() {
+  try {
+    await apiFetch('/api/auth/logout', { method: 'POST' });
+  } catch (e) {
+    // Mesmo sem resposta do servidor a sessão local é encerrada
+  }
+  window.location.reload();
+}
+
+function handleSessionExpired() {
+  if (!currentUser) return;
+  currentUser = null;
+  showAuthScreen('Sua sessão expirou. Entre novamente.');
+}
+
+// Ajusta cabeçalho, menu e permissões conforme o perfil do usuário logado
+function applyUserInterface() {
+  const full = isFullUser();
+  document.body.classList.toggle('perfil-visualizacao', !full);
+  document.getElementById('userAvatar').textContent = (currentUser.nome || '?').trim().charAt(0).toUpperCase();
+  document.getElementById('userName').textContent = currentUser.nome;
+  document.getElementById('userRole').textContent = full ? 'Acesso total' : 'Visualização (sócio)';
+  document.getElementById('navUsers').style.display = full ? '' : 'none';
+}
+
+// forced = true: troca obrigatória (senha padrão/provisória), sem opção de cancelar
+function openModalChangePassword(forced = false) {
+  const modal = document.getElementById('modalChangePassword');
+  document.getElementById('formChangePassword').reset();
+  modal.dataset.locked = forced ? '1' : '';
+  document.getElementById('pwdTitle').textContent = forced ? 'Defina Sua Nova Senha' : 'Alterar Minha Senha';
+  document.getElementById('pwdForcedNotice').style.display = forced ? 'block' : 'none';
+  document.getElementById('pwdCloseBtn').style.display = forced ? 'none' : '';
+  document.getElementById('pwdCancelBtn').textContent = forced ? 'Sair' : 'Cancelar';
+  document.getElementById('pwdCancelBtn').onclick = forced ? logout : () => closeModal('modalChangePassword');
+  openModal('modalChangePassword');
+  setTimeout(() => document.getElementById('pwdAtual').focus(), 50);
+}
+
+async function handleChangePassword(e) {
+  e.preventDefault();
+  const novaSenha = document.getElementById('pwdNova').value;
+  if (novaSenha !== document.getElementById('pwdConfirma').value) {
+    alert('A nova senha e a confirmação não conferem.');
+    return;
+  }
+  try {
+    await apiFetch('/api/auth/senha', {
+      method: 'POST',
+      body: JSON.stringify({ senhaAtual: document.getElementById('pwdAtual').value, novaSenha })
+    });
+  } catch (err) {
+    alert(err.message);
+    return;
+  }
+
+  const modal = document.getElementById('modalChangePassword');
+  const wasForced = modal.dataset.locked === '1';
+  modal.dataset.locked = '';
+  closeModal('modalChangePassword');
+  showToast('Senha alterada com sucesso!');
+
+  if (wasForced) {
+    currentUser = { ...currentUser, trocarSenha: false };
+    await startSession(currentUser);
+  }
+}
+
+// ============================================================================
+// CADASTRO DE USUÁRIOS (SOMENTE PERFIL FULL)
+// ============================================================================
+let usersCache = [];
+
+async function renderUsersView() {
+  const tbody = document.getElementById('usersTableBody');
+  tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: var(--text-dim);">Carregando...</td></tr>';
+  try {
+    usersCache = await apiFetch('/api/usuarios');
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 20px; color: var(--danger);">${escapeHtml(err.message)}</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = usersCache.map(u => `
+    <tr>
+      <td><strong>${escapeHtml(u.nome)}</strong>${u.id === currentUser.id ? ' <span style="font-size: 0.75rem; color: var(--text-dim);">(você)</span>' : ''}</td>
+      <td>${escapeHtml(u.login)}</td>
+      <td><span class="status-pill ${u.perfil === 'full' ? 'pago' : 'upcoming'}">${u.perfil === 'full' ? 'Acesso total' : 'Visualização'}</span></td>
+      <td>${u.veiculosComoSocio} veículo(s)</td>
+      <td>
+        <span class="status-pill ${u.ativo ? 'pago' : 'atrasado'}">${u.ativo ? 'Ativo' : 'Inativo'}</span>
+        ${u.trocarSenha ? '<span class="status-pill pendente" title="Ainda não trocou a senha provisória">Senha provisória</span>' : ''}
+      </td>
+      <td>
+        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+          <button class="btn btn-secondary btn-sm" onclick="openModalUser(${u.id})">Editar</button>
+          ${u.id === currentUser.id ? '' : `<button class="btn btn-danger btn-sm" onclick="deleteUser(${u.id})">Excluir</button>`}
+        </div>
+      </td>
+    </tr>
+  `).join('') || '<tr><td colspan="6" style="text-align: center; padding: 20px; color: var(--text-dim);">Nenhum usuário cadastrado.</td></tr>';
+}
+
+function openModalUser(userId = null) {
+  const user = usersCache.find(u => u.id === Number(userId)) || null;
+  document.getElementById('formUser').reset();
+  document.getElementById('userId').value = user ? user.id : '';
+  document.getElementById('modalUserTitle').textContent = user ? `Editar Usuário — ${user.nome}` : 'Novo Usuário';
+  document.getElementById('userNome').value = user ? user.nome : '';
+  document.getElementById('userLogin').value = user ? user.login : '';
+  document.getElementById('userPerfil').value = user ? user.perfil : 'visualizacao';
+  document.getElementById('userAtivo').checked = user ? user.ativo : true;
+  document.getElementById('userSenha').required = !user;
+  document.getElementById('userSenhaHint').textContent = user
+    ? 'Deixe em branco para manter a senha atual. Se preencher, ela é provisória: o usuário troca no próximo login.'
+    : 'Senha provisória (mínimo 6 caracteres): o usuário define a dele no primeiro login.';
+  document.getElementById('userAtivoGroup').style.display = user && user.id === currentUser.id ? 'none' : '';
+  openModal('modalUser');
+}
+
+async function handleSaveUser(e) {
+  e.preventDefault();
+  const id = Number(document.getElementById('userId').value) || null;
+  const senha = document.getElementById('userSenha').value;
+  const payload = {
+    nome: document.getElementById('userNome').value.trim(),
+    login: document.getElementById('userLogin').value.trim(),
+    perfil: document.getElementById('userPerfil').value,
+    ativo: document.getElementById('userAtivo').checked
+  };
+  if (senha) payload.senha = senha;
+
+  try {
+    await apiFetch(id ? `/api/usuarios/${id}` : '/api/usuarios', {
+      method: id ? 'PUT' : 'POST',
+      body: JSON.stringify(payload)
+    });
+  } catch (err) {
+    alert(err.message);
+    return;
+  }
+
+  closeModal('modalUser');
+  showToast(id ? 'Usuário atualizado!' : 'Usuário cadastrado!');
+  if (id === currentUser.id) {
+    currentUser = { ...currentUser, nome: payload.nome, login: payload.login, perfil: payload.perfil };
+    applyUserInterface();
+  }
+  // Recarrega dados: o nome do sócio e os vínculos de sociedade podem ter mudado
+  await reloadFromServer();
+  if (isFullUser()) renderUsersView();
+  else switchView('dashboard');
+}
+
+async function deleteUser(userId) {
+  const user = usersCache.find(u => u.id === Number(userId));
+  if (!user) return;
+  const aviso = user.veiculosComoSocio > 0
+    ? `\n\n${user.veiculosComoSocio} veículo(s) deste sócio passarão a ficar sem sócio.`
+    : '';
+  if (!confirm(`Excluir o usuário "${user.nome}"?${aviso}`)) return;
+  try {
+    await apiFetch(`/api/usuarios/${user.id}`, { method: 'DELETE' });
+  } catch (err) {
+    alert(err.message);
+    return;
+  }
+  showToast('Usuário excluído.');
+  await reloadFromServer();
+  renderUsersView();
+}
+
+// ============================================================================
+// MIGRAÇÃO: DADOS QUE FICAVAM SALVOS SOMENTE NESTE NAVEGADOR
+// ============================================================================
+const LEGACY_MIGRATION_KEY = 'automanage_toledo_migrado_servidor';
+
+function readLegacyIndexedDBFiles() {
+  return new Promise((resolve) => {
+    try {
+      const req = indexedDB.open('AutoManageRepoDB_v1');
+      req.onerror = () => resolve([]);
+      req.onsuccess = (e) => {
+        const database = e.target.result;
+        if (!database.objectStoreNames.contains('arquivos')) {
+          database.close();
+          resolve([]);
+          return;
+        }
+        const getAll = database.transaction(['arquivos'], 'readonly').objectStore('arquivos').getAll();
+        getAll.onsuccess = (ev) => {
+          database.close();
+          resolve(ev.target.result || []);
+        };
+        getAll.onerror = () => {
+          database.close();
+          resolve([]);
+        };
+      };
+    } catch (err) {
+      resolve([]);
+    }
+  });
+}
+
+async function offerBrowserDataImport() {
+  if (!isFullUser() || dataOrigin !== 'planilha') return;
+
+  let legacy = null;
+  try {
+    if (localStorage.getItem(LEGACY_MIGRATION_KEY)) return;
+    legacy = JSON.parse(localStorage.getItem(DB_STORAGE_KEY) || 'null');
+  } catch (e) {
+    return;
+  }
+  if (!legacy || !Array.isArray(legacy.veiculos)) return;
+
+  const ok = confirm(
+    `Este navegador tem dados salvos da versão anterior do sistema (${legacy.veiculos.length} veículos, ` +
+    `${(legacy.despesas || []).length} despesas, ${(legacy.documentos || []).length} documentos).\n\n` +
+    'Deseja enviar esses dados para o servidor? Eles substituirão a base original da planilha que está no servidor.'
+  );
+  try {
+    localStorage.setItem(LEGACY_MIGRATION_KEY, new Date().toISOString());
+  } catch (e) {
+    // Sem localStorage a pergunta apenas reaparece no próximo login
+  }
+  if (!ok) return;
+
+  appData = {
+    veiculos: legacy.veiculos || [],
+    despesas: legacy.despesas || [],
+    documentos: legacy.documentos || [],
+    pagamentos: legacy.pagamentos || []
+  };
+
+  const files = await readLegacyIndexedDBFiles();
+  const docIds = new Set(appData.documentos.map(d => Number(d.id)));
+  let enviados = 0;
+  for (const file of files) {
+    if (docIds.has(Number(file.id)) && await AppFileRepo.salvar(file.id, file)) enviados++;
+  }
+
+  saveDatabase();
+  initApp();
+  showToast(`Dados do navegador enviados ao servidor (${appData.veiculos.length} veículos, ${enviados} arquivos).`);
+}
 
 function initTheme() {
   const savedTheme = localStorage.getItem(THEME_STORAGE_KEY) || 'dark';
@@ -174,40 +490,86 @@ function updateThemeIcon(theme) {
   }
 }
 
-function loadDatabase() {
-  const stored = localStorage.getItem(DB_STORAGE_KEY);
-  if (stored) {
-    try {
-      appData = JSON.parse(stored);
-    } catch (e) {
-      console.error('Erro ao ler LocalStorage, carregando padrão:', e);
-      appData = JSON.parse(JSON.stringify(DEFAULT_DATABASE));
-      saveDatabase();
-    }
-  } else {
-    // Carregar dados originais da planilha
-    appData = JSON.parse(JSON.stringify(DEFAULT_DATABASE));
-    saveDatabase();
-  }
+// Carrega do servidor somente os dados que o usuário logado pode ver
+async function loadDatabase() {
+  const dados = await apiFetch('/api/dados');
+  appData = {
+    veiculos: dados.veiculos || [],
+    despesas: dados.despesas || [],
+    documentos: dados.documentos || [],
+    pagamentos: dados.pagamentos || []
+  };
+  dataVersion = Number(dados.versao) || 0;
+  availableSocios = dados.socios || [];
+  dataOrigin = dados.origem || '';
 }
+
+// Salvamentos são enviados em fila: alterações seguidas viram um único envio
+let saveInFlight = null;
+let savePending = false;
 
 function saveDatabase() {
-  localStorage.setItem(DB_STORAGE_KEY, JSON.stringify(appData));
   updateBadgesAndSelects();
+  if (!isFullUser()) return;
+  savePending = true;
+  if (!saveInFlight) saveInFlight = flushSaveQueue();
 }
 
-function resetToSpreadsheetDefaults() {
-  if (confirm('Deseja realmente restaurar todos os dados para a planilha original Toledo_v2? Alterações manuais não salvas serão perdidas.')) {
-    appData = JSON.parse(JSON.stringify(DEFAULT_DATABASE));
-    saveDatabase();
-    initApp();
-    showToast('Base restaurada com sucesso a partir da planilha Toledo_v2!');
+async function flushSaveQueue() {
+  try {
+    while (savePending) {
+      savePending = false;
+      const { versao } = await apiFetch('/api/dados', {
+        method: 'PUT',
+        body: JSON.stringify({ ...appData, versao: dataVersion })
+      });
+      dataVersion = versao;
+    }
+  } catch (err) {
+    savePending = false;
+    if (err.status === 409) {
+      alert('Os dados foram alterados por outro usuário enquanto você editava. A tela será atualizada com a versão mais recente; refaça a sua última alteração.');
+      await reloadFromServer();
+    } else if (err.status !== 401) {
+      alert(`Não foi possível salvar no servidor: ${err.message}`);
+    }
+  } finally {
+    saveInFlight = null;
   }
 }
 
+async function reloadFromServer() {
+  try {
+    await loadDatabase();
+    initApp();
+    if (currentDetailCarId && appData.veiculos.some(v => Number(v.id) === Number(currentDetailCarId))) {
+      renderVehicleDetail(currentDetailCarId);
+    }
+  } catch (err) {
+    console.error('Erro ao recarregar dados:', err);
+  }
+}
+
+async function resetToSpreadsheetDefaults() {
+  if (!requireFullAccess()) return;
+  if (confirm('Deseja realmente restaurar todos os dados para a planilha original Toledo_v2? Todas as alterações feitas no sistema serão perdidas para TODOS os usuários.')) {
+    try {
+      await apiFetch('/api/dados/restaurar-planilha', { method: 'POST' });
+      await reloadFromServer();
+      showToast('Base restaurada com sucesso a partir da planilha Toledo_v2!');
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+}
+
+let repoDropzoneReady = false;
+
 function initApp() {
-  AppFileRepo.init();
-  setupRepoDropzoneEvents();
+  if (!repoDropzoneReady) {
+    setupRepoDropzoneEvents();
+    repoDropzoneReady = true;
+  }
   ensureAllInstallments();
   populateFilterSelects();
   updateCalculations();
@@ -327,19 +689,75 @@ function populateFilterSelects() {
   const filterOptionsHtml = '<option value="todos">Todos os Veículos</option>' + optionsHtml;
   if (filterExpenseVehicle) filterExpenseVehicle.innerHTML = filterOptionsHtml;
   if (filterDocVehicle) filterDocVehicle.innerHTML = filterOptionsHtml;
+
+  populateSocioFilter();
+}
+
+// Filtro de sócios do estoque: usuários vinculados + sociedades em texto ainda não vinculadas
+function populateSocioFilter() {
+  const filterSociedade = document.getElementById('filterSociedade');
+  if (!filterSociedade) return;
+  const currentVal = filterSociedade.value;
+
+  const socios = new Map();
+  availableSocios.forEach(s => socios.set(`socio:${s.id}`, s.nome));
+  appData.veiculos.forEach(v => {
+    if (v.socioId) socios.set(`socio:${v.socioId}`, v.sociedade || `Sócio #${v.socioId}`);
+    else if (v.sociedade) socios.set(`texto:${v.sociedade}`, `${v.sociedade} (sem usuário)`);
+  });
+
+  filterSociedade.innerHTML = '<option value="todos">Todos os Sócios</option>' +
+    [...socios.entries()]
+      .sort((a, b) => a[1].localeCompare(b[1]))
+      .map(([valor, nome]) => `<option value="${escapeHtml(valor)}">Sócio: ${escapeHtml(nome)}</option>`)
+      .join('') +
+    '<option value="sem_sociedade">Próprio (sem sócio)</option>';
+
+  filterSociedade.value = [...filterSociedade.options].some(o => o.value === currentVal) ? currentVal : 'todos';
+}
+
+// Campo "Sócio" do cadastro de veículo, preenchido a partir do cadastro de usuários
+function populateVehicleSocioSelect(car = null) {
+  const select = document.getElementById('vehSocio');
+  if (!select) return;
+
+  const options = ['<option value="">Próprio (sem sócio)</option>'];
+  availableSocios.forEach(s => {
+    options.push(`<option value="${s.id}">${escapeHtml(s.nome)}${s.perfil === 'full' ? ' (acesso total)' : ''}</option>`);
+  });
+
+  // Sócio vinculado a usuário que não aparece na lista (ex: desativado)
+  if (car && car.socioId && !availableSocios.some(s => Number(s.id) === Number(car.socioId))) {
+    options.push(`<option value="${car.socioId}">${escapeHtml(car.sociedade || `Usuário #${car.socioId}`)} (inativo)</option>`);
+  }
+  // Registro antigo com sociedade em texto e sem usuário vinculado
+  const legado = car && !car.socioId && car.sociedade;
+  if (legado) {
+    options.push(`<option value="legado">${escapeHtml(car.sociedade)} (sem usuário cadastrado)</option>`);
+  }
+  select.innerHTML = options.join('');
+  select.value = legado ? 'legado' : (car && car.socioId ? String(car.socioId) : '');
+
+  const hint = document.getElementById('vehSocioHint');
+  if (hint) {
+    hint.textContent = car && !car.socioId && car.sociedade
+      ? `Registro antigo com sociedade "${car.sociedade}" sem usuário vinculado. Cadastre um usuário com esse nome ou escolha um sócio.`
+      : 'O sócio com perfil de visualização enxerga somente os carros vinculados a ele.';
+  }
 }
 
 // ============================================================================
 // NAVEGAÇÃO ENTRE TELAS
 // ============================================================================
 function switchView(viewName) {
-  const views = ['viewDashboard', 'viewInventory', 'viewExpenses', 'viewDocuments', 'viewPayments', 'viewVehicleDetail', 'viewBackup'];
+  if (viewName === 'users' && !requireFullAccess()) return;
+  const views = ['viewDashboard', 'viewInventory', 'viewExpenses', 'viewDocuments', 'viewPayments', 'viewVehicleDetail', 'viewBackup', 'viewUsers'];
   views.forEach(v => {
     const el = document.getElementById(v);
     if (el) el.style.display = 'none';
   });
 
-  const navs = ['navDashboard', 'navInventory', 'navExpenses', 'navDocuments', 'navPayments', 'navBackup'];
+  const navs = ['navDashboard', 'navInventory', 'navExpenses', 'navDocuments', 'navPayments', 'navBackup', 'navUsers'];
   navs.forEach(n => {
     const el = document.getElementById(n);
     if (el) el.classList.remove('active');
@@ -372,6 +790,10 @@ function switchView(viewName) {
   } else if (viewName === 'backup') {
     document.getElementById('viewBackup').style.display = 'block';
     document.getElementById('navBackup').classList.add('active');
+  } else if (viewName === 'users') {
+    document.getElementById('viewUsers').style.display = 'block';
+    document.getElementById('navUsers').classList.add('active');
+    renderUsersView();
   }
 
   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -717,9 +1139,10 @@ function getFilteredVehicles() {
     if (statusFilter !== 'todos' && v.status !== statusFilter) return false;
     // Marca
     if (marcaFilter !== 'todas' && v.marca !== marcaFilter) return false;
-    // Sociedade
-    if (socFilter === 'Lagoa' && v.sociedade !== 'Lagoa') return false;
-    if (socFilter === 'sem_sociedade' && v.sociedade) return false;
+    // Sócio (usuário cadastrado) ou sociedade em texto de registros antigos
+    if (socFilter === 'sem_sociedade' && (v.socioId || v.sociedade)) return false;
+    if (socFilter.startsWith('socio:') && Number(v.socioId) !== Number(socFilter.slice(6))) return false;
+    if (socFilter.startsWith('texto:') && (v.socioId || v.sociedade !== socFilter.slice(6))) return false;
 
     // Busca textual
     if (searchTerm) {
@@ -1122,6 +1545,7 @@ function renderDetailCarPayments(car) {
 }
 
 function togglePayInstallment(paymentId) {
+  if (!requireFullAccess()) return;
   const p = appData.pagamentos.find(item => Number(item.id) === Number(paymentId));
   if (!p) return;
 
@@ -1195,6 +1619,7 @@ function renderExpensesTable() {
 }
 
 function deleteExpense(expId) {
+  if (!requireFullAccess()) return;
   if (confirm('Deseja realmente excluir este lançamento de despesa?')) {
     appData.despesas = appData.despesas.filter(d => Number(d.id) !== Number(expId));
     saveDatabase();
@@ -1508,6 +1933,7 @@ async function downloadDocumentFile(docId) {
 }
 
 async function deleteDocument(docId) {
+  if (!requireFullAccess()) return;
   if (confirm('Deseja realmente remover este arquivo do repositório?')) {
     await AppFileRepo.excluir(docId);
     appData.documentos = appData.documentos.filter(d => Number(d.id) !== Number(docId));
@@ -1621,7 +2047,11 @@ function renderActiveFinancings() {
 // ============================================================================
 // MODAIS E FORMULÁRIOS
 // ============================================================================
+// Modais que o perfil de visualização pode abrir (não alteram dados)
+const READ_ONLY_MODALS = ['modalCarnetPix', 'modalChangePassword'];
+
 function openModal(modalId) {
+  if (!READ_ONLY_MODALS.includes(modalId) && !requireFullAccess()) return;
   const m = document.getElementById(modalId);
   if (!m) {
     console.error('Modal não encontrado:', modalId);
@@ -1633,7 +2063,7 @@ function openModal(modalId) {
 
 function closeModal(modalId) {
   const m = document.getElementById(modalId);
-  if (!m) return;
+  if (!m || m.dataset.locked === '1') return;
   m.classList.remove('show');
   // Restore scroll after a brief delay to allow transition
   setTimeout(() => {
@@ -1665,6 +2095,7 @@ function openModalAddVehicle() {
   document.getElementById('vehChassi').value = '';
   document.getElementById('vehObservacoes').value = '';
   document.getElementById('vehDataCompra').value = new Date().toISOString().slice(0, 10);
+  populateVehicleSocioSelect();
   openModal('modalVehicle');
 }
 
@@ -1685,7 +2116,7 @@ function editCarById(carId) {
   document.getElementById('vehKm').value = car.km || '';
   document.getElementById('vehCombustivel').value = car.combustivel || 'Flex';
   document.getElementById('vehCambio').value = car.cambio || 'Manual';
-  document.getElementById('vehSociedade').value = car.sociedade || '';
+  populateVehicleSocioSelect(car);
   document.getElementById('vehAntigoDono').value = car.antigoDono || '';
   document.getElementById('vehDataCompra').value = car.dataCompra || '';
   document.getElementById('vehValorCompra').value = car.valorCompra || '';
@@ -1710,6 +2141,17 @@ function handleSaveVehicle(e) {
   const idVal = document.getElementById('vehId').value;
   const isEdit = Boolean(idVal);
 
+  const socioValue = document.getElementById('vehSocio').value;
+  const carroAtual = isEdit ? appData.veiculos.find(v => Number(v.id) === Number(idVal)) : null;
+  const socioId = Number(socioValue) || null;
+  let sociedade = '';
+  if (socioId) {
+    const socio = availableSocios.find(s => Number(s.id) === socioId);
+    sociedade = socio ? socio.nome : (carroAtual && carroAtual.sociedade) || '';
+  } else if (socioValue === 'legado' && carroAtual) {
+    sociedade = carroAtual.sociedade || '';
+  }
+
   const vehicleObj = {
     id: isEdit ? Number(idVal) : (Math.max(0, ...appData.veiculos.map(v => Number(v.id) || 0)) + 1),
     marca: document.getElementById('vehMarca').value.trim(),
@@ -1723,7 +2165,8 @@ function handleSaveVehicle(e) {
     km: Number(document.getElementById('vehKm').value) || 0,
     combustivel: document.getElementById('vehCombustivel').value,
     cambio: document.getElementById('vehCambio').value,
-    sociedade: document.getElementById('vehSociedade').value.trim(),
+    socioId,
+    sociedade,
     antigoDono: document.getElementById('vehAntigoDono').value.trim(),
     dataCompra: document.getElementById('vehDataCompra').value,
     valorCompra: Number(document.getElementById('vehValorCompra').value) || 0,
@@ -1842,6 +2285,7 @@ function handleSaveSale(e) {
 // REVERTER VENDA
 // ============================================================================
 function revertSale() {
+  if (!requireFullAccess()) return;
   // Tenta pegar o ID a partir do bloco no modal (se chamado de lá) ou da ficha atual
   const revertBlock = document.getElementById('revertSaleBlock');
   const idFromModal = revertBlock && revertBlock.dataset.carId ? Number(revertBlock.dataset.carId) : null;
@@ -2281,9 +2725,9 @@ async function handleSaveDocument(e) {
     temArquivoLocal: origin !== 'link'
   };
 
-  // Persistir no IndexedDB caso seja upload ou foto da câmera
+  // Envia o arquivo ao servidor caso seja upload ou foto da câmera
   if (origin !== 'link' && fileBase64) {
-    await AppFileRepo.salvar(docId, {
+    const enviado = await AppFileRepo.salvar(docId, {
       id: docId,
       veiculoId: carId,
       nome: fileName,
@@ -2292,6 +2736,7 @@ async function handleSaveDocument(e) {
       dataBase64: fileBase64,
       criadoEm: new Date().toISOString()
     });
+    if (!enviado) return;
   }
 
   appData.documentos.push(docObj);
@@ -2614,7 +3059,7 @@ function onSettleTipoChange(tipo) {
   } else if (tipo === 'parcial_valor') {
     valInput.value = (car && car.valorParcela) ? car.valorParcela.toFixed(2) : '1000.00';
     if (nominalTag) nominalTag.textContent = `Saldo Aberto: ${formatMoney(openBalance)}`;
-    if (valHint) valHint.textContent = 'O valor informado será amortizado consecutivamente das próximas parcelas em aberto.';
+    if (valHint) valHint.textContent = 'O valor informado será abatido das últimas parcelas para as primeiras (ordem decrescente).';
   }
 
   recalcSettleSummary();
@@ -2699,7 +3144,23 @@ function recalcSettleSummary() {
     novoSaldoRestante = Math.max(0, openBalance - nominalComparativo);
   } else if (tipo === 'parcial_valor') {
     nominalComparativo = valPago;
-    descricaoAcao = `Amortização em dinheiro de ${formatMoney(valPago)} abatendo parcelas consecutivas.`;
+    // Simula o abatimento a partir da última parcela para mostrar quais serão afetadas
+    let restanteSim = valPago;
+    const quitadasSim = [];
+    let parcialSim = null;
+    for (let i = pendentes.length - 1; i >= 0 && restanteSim > 0; i--) {
+      const p = pendentes[i];
+      if (restanteSim >= Number(p.valor)) {
+        quitadasSim.push(p.numeroParcela);
+        restanteSim -= Number(p.valor);
+      } else {
+        parcialSim = p.numeroParcela;
+        restanteSim = 0;
+      }
+    }
+    descricaoAcao = `Amortização de ${formatMoney(valPago)} abatendo das últimas parcelas para as primeiras` +
+      (quitadasSim.length ? ` • Quitadas: Nº ${quitadasSim.join(', ')}` : '') +
+      (parcialSim !== null ? ` • Abatimento parcial na Nº ${parcialSim}` : '') + '.';
     novoSaldoRestante = Math.max(0, openBalance - valPago);
   }
 
@@ -2788,9 +3249,10 @@ function handleSaveSettlement(e) {
     });
     showToast(`${qtd} parcela(s) baixada(s) com sucesso na quitação parcial!`);
   } else if (tipo === 'parcial_valor') {
+    // Abate em ordem decrescente: da última parcela em aberto para a primeira
     let restante = valPago;
     let baixadas = 0;
-    for (let i = 0; i < pendentes.length; i++) {
+    for (let i = pendentes.length - 1; i >= 0; i--) {
       const p = pendentes[i];
       if (restante >= p.valor) {
         p.status = 'pago';
@@ -2954,14 +3416,21 @@ function exportFullJSONBackup() {
 
 function importJSONBackup(event) {
   const file = event.target.files[0];
-  if (!file) return;
+  event.target.value = '';
+  if (!file || !requireFullAccess()) return;
+  if (!confirm('Restaurar este backup substituirá TODOS os dados do servidor para todos os usuários. Deseja continuar?')) return;
 
   const reader = new FileReader();
   reader.onload = (e) => {
     try {
       const imported = JSON.parse(e.target.result);
       if (imported.veiculos && Array.isArray(imported.veiculos)) {
-        appData = imported;
+        appData = {
+          veiculos: imported.veiculos,
+          despesas: imported.despesas || [],
+          documentos: imported.documentos || [],
+          pagamentos: imported.pagamentos || []
+        };
         saveDatabase();
         initApp();
         showToast('Backup importado com sucesso!');
