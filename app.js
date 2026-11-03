@@ -31,6 +31,8 @@ let currentPaymentsYear = 2026;
 let currentInventoryView = 'cards'; // 'cards' ou 'table'
 let chartLucroInstance = null;
 let chartCategoriasInstance = null;
+// Período do dashboard: tipo = 'dia' | 'semana' | 'mes' | 'ano' | 'tudo' | 'personalizado'
+let dashboardPeriod = { tipo: 'tudo', inicio: '', fim: '' };
 
 // ============================================================================
 // REPOSITÓRIO DIGITAL DE ARQUIVOS E FOTOS (INDEXEDDB STORAGE ENGINE)
@@ -378,27 +380,153 @@ function switchView(viewName) {
 // ============================================================================
 // DASHBOARD VIEW
 // ============================================================================
+function toISODateLocal(date) {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function parseISODateLocal(dateStr) {
+  const [y, m, d] = String(dateStr).split('-').map(Number);
+  return new Date(y, (m || 1) - 1, d || 1);
+}
+
+// Calcula o intervalo [inicio, fim] (YYYY-MM-DD) do período que contém a data de referência
+function computePeriodRange(tipo, refDate) {
+  const ref = new Date(refDate.getFullYear(), refDate.getMonth(), refDate.getDate());
+  if (tipo === 'dia') {
+    return { inicio: toISODateLocal(ref), fim: toISODateLocal(ref) };
+  }
+  if (tipo === 'semana') {
+    // Semana de segunda a domingo
+    const offset = (ref.getDay() + 6) % 7;
+    const start = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate() - offset);
+    const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 6);
+    return { inicio: toISODateLocal(start), fim: toISODateLocal(end) };
+  }
+  if (tipo === 'mes') {
+    const start = new Date(ref.getFullYear(), ref.getMonth(), 1);
+    const end = new Date(ref.getFullYear(), ref.getMonth() + 1, 0);
+    return { inicio: toISODateLocal(start), fim: toISODateLocal(end) };
+  }
+  if (tipo === 'ano') {
+    return { inicio: `${ref.getFullYear()}-01-01`, fim: `${ref.getFullYear()}-12-31` };
+  }
+  return { inicio: '', fim: '' };
+}
+
+function setDashboardPeriod(tipo) {
+  dashboardPeriod = { tipo, ...computePeriodRange(tipo, new Date()) };
+  renderDashboard();
+}
+
+function shiftDashboardPeriod(direction) {
+  const { tipo, inicio, fim } = dashboardPeriod;
+  if (tipo === 'tudo' || !inicio) return;
+
+  const ref = parseISODateLocal(inicio);
+  if (tipo === 'personalizado') {
+    // Desloca o intervalo livre pelo seu próprio tamanho
+    const end = parseISODateLocal(fim || inicio);
+    const spanDays = Math.round((end - ref) / 86400000) + 1;
+    const newStart = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate() + spanDays * direction);
+    const newEnd = new Date(end.getFullYear(), end.getMonth(), end.getDate() + spanDays * direction);
+    dashboardPeriod = { tipo, inicio: toISODateLocal(newStart), fim: toISODateLocal(newEnd) };
+  } else {
+    if (tipo === 'dia') ref.setDate(ref.getDate() + direction);
+    if (tipo === 'semana') ref.setDate(ref.getDate() + 7 * direction);
+    if (tipo === 'mes') ref.setMonth(ref.getMonth() + direction);
+    if (tipo === 'ano') ref.setFullYear(ref.getFullYear() + direction);
+    dashboardPeriod = { tipo, ...computePeriodRange(tipo, ref) };
+  }
+  renderDashboard();
+}
+
+function onDashboardCustomRange() {
+  let inicio = document.getElementById('dashDateFrom').value;
+  let fim = document.getElementById('dashDateTo').value;
+  if (!inicio && !fim) {
+    setDashboardPeriod('tudo');
+    return;
+  }
+  if (inicio && fim && inicio > fim) [inicio, fim] = [fim, inicio];
+  dashboardPeriod = { tipo: 'personalizado', inicio, fim };
+  renderDashboard();
+}
+
+function isDateInDashboardPeriod(dateStr) {
+  const { tipo, inicio, fim } = dashboardPeriod;
+  if (tipo === 'tudo') return true;
+  if (!dateStr) return false;
+  const day = String(dateStr).slice(0, 10);
+  return (!inicio || day >= inicio) && (!fim || day <= fim);
+}
+
+function getDashboardPeriodLabel() {
+  const { tipo, inicio, fim } = dashboardPeriod;
+  if (tipo === 'tudo') return 'Todo o período';
+  if (tipo === 'dia') {
+    const label = parseISODateLocal(inicio).toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' });
+    return label.charAt(0).toUpperCase() + label.slice(1);
+  }
+  if (tipo === 'semana') return `Semana ${formatDate(inicio).slice(0, 5)} a ${formatDate(fim)}`;
+  if (tipo === 'mes') {
+    const label = parseISODateLocal(inicio).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+    return label.charAt(0).toUpperCase() + label.slice(1);
+  }
+  if (tipo === 'ano') return inicio.slice(0, 4);
+  if (inicio && fim) return `${formatDate(inicio)} a ${formatDate(fim)}`;
+  return inicio ? `A partir de ${formatDate(inicio)}` : `Até ${formatDate(fim)}`;
+}
+
+function syncDashboardPeriodControls() {
+  document.querySelectorAll('#dashPeriodToggle .view-mode-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.period === dashboardPeriod.tipo);
+  });
+  const label = document.getElementById('dashPeriodLabel');
+  if (label) label.textContent = getDashboardPeriodLabel();
+
+  const canShift = dashboardPeriod.tipo !== 'tudo' && !!dashboardPeriod.inicio && !!dashboardPeriod.fim;
+  const prev = document.getElementById('dashPeriodPrev');
+  const next = document.getElementById('dashPeriodNext');
+  if (prev) prev.disabled = !canShift;
+  if (next) next.disabled = !canShift;
+
+  const from = document.getElementById('dashDateFrom');
+  const to = document.getElementById('dashDateTo');
+  if (from) from.value = dashboardPeriod.inicio;
+  if (to) to.value = dashboardPeriod.fim;
+}
+
 function renderDashboard() {
   updateCalculations();
+  syncDashboardPeriodControls();
 
-  // KPIs
+  // KPIs — estoque é sempre a posição atual; vendas, lucro e despesas seguem o período filtrado
   const inStockCars = appData.veiculos.filter(v => v.status !== 'Vendido');
-  const soldCars = appData.veiculos.filter(v => v.status === 'Vendido');
+  const soldCars = appData.veiculos.filter(v => v.status === 'Vendido' && isDateInDashboardPeriod(v.dataVenda));
+  const despesasPeriodo = appData.despesas.filter(d => isDateInDashboardPeriod(d.data));
 
   const totalEstoqueCusto = inStockCars.reduce((acc, v) => acc + (v.custoFinal || 0), 0);
   const totalLucro = soldCars.reduce((acc, v) => acc + (v.lucro || 0), 0);
+  const totalCustoVendidos = soldCars.reduce((acc, v) => acc + (v.custoFinal || 0), 0);
   const totalVendasValor = soldCars.reduce((acc, v) => acc + (Number(v.valorVenda) || 0), 0);
-  const totalDespesas = appData.despesas.reduce((acc, d) => acc + (Number(d.valor) || 0), 0);
+  const totalDespesas = despesasPeriodo.reduce((acc, d) => acc + (Number(d.valor) || 0), 0);
+  const rentabilidade = totalCustoVendidos > 0 ? Math.round((totalLucro / totalCustoVendidos) * 100) : 0;
 
   document.getElementById('kpiEstoqueValor').textContent = formatMoney(totalEstoqueCusto);
-  document.getElementById('kpiEstoqueCount').textContent = `${inStockCars.length} veículos em pátio`;
+  document.getElementById('kpiEstoqueCount').textContent = `${inStockCars.length} veículos em pátio (posição atual)`;
 
   document.getElementById('kpiLucroTotal').textContent = formatMoney(totalLucro);
+  document.getElementById('kpiLucroBadge').textContent = `${rentabilidade >= 0 ? '+' : ''}${rentabilidade}% rentabilidade média`;
   document.getElementById('kpiCarrosVendidos').textContent = soldCars.length;
   document.getElementById('kpiVendaTotalValor').textContent = `${formatMoney(totalVendasValor)} em vendas`;
 
   document.getElementById('kpiDespesasTotal').textContent = formatMoney(totalDespesas);
-  document.getElementById('kpiDespesasCount').textContent = `${appData.despesas.length} despesas lançadas`;
+  document.getElementById('kpiDespesasCount').textContent = `${despesasPeriodo.length} despesas lançadas`;
+
+  renderOverdueKpi();
 
   // Veículos de destaque no dashboard
   const container = document.getElementById('dashboardVehiclesGrid');
@@ -411,6 +539,53 @@ function renderDashboard() {
   renderDashboardCharts();
 }
 
+// Parcela em atraso: não paga e com vencimento anterior a hoje
+function isInstallmentOverdue(p) {
+  return p.status !== 'pago' && !!p.dataVencimento && p.dataVencimento < toISODateLocal(new Date());
+}
+
+// Atraso é sempre a posição de hoje, independente do período filtrado
+function getOverdueSummary() {
+  const byCar = new Map();
+  appData.pagamentos.filter(isInstallmentOverdue).forEach(p => {
+    const car = appData.veiculos.find(v => Number(v.id) === Number(p.veiculoId));
+    if (!car) return;
+    const entry = byCar.get(car.id) || { car, parcelas: 0, valor: 0, maisAntiga: p.dataVencimento };
+    entry.parcelas += 1;
+    entry.valor += Number(p.valor) || 0;
+    if (p.dataVencimento < entry.maisAntiga) entry.maisAntiga = p.dataVencimento;
+    byCar.set(car.id, entry);
+  });
+  const cars = [...byCar.values()].sort((a, b) => a.maisAntiga.localeCompare(b.maisAntiga));
+  return {
+    cars,
+    parcelas: cars.reduce((acc, c) => acc + c.parcelas, 0),
+    valor: cars.reduce((acc, c) => acc + c.valor, 0)
+  };
+}
+
+function renderOverdueKpi() {
+  const { cars, parcelas, valor } = getOverdueSummary();
+  const badge = document.getElementById('kpiAtrasoBadge');
+  const card = document.getElementById('kpiAtrasoCard');
+  const value = document.getElementById('kpiAtrasoCarros');
+
+  value.textContent = cars.length;
+  value.style.color = cars.length > 0 ? 'var(--danger)' : '';
+
+  if (cars.length === 0) {
+    badge.textContent = 'Nenhuma parcela vencida';
+    badge.className = 'kpi-footer-badge badge-positive';
+    card.title = 'Ver controle de pagamentos';
+  } else {
+    badge.textContent = `${parcelas} parcela(s) • ${formatMoney(valor)} vencido`;
+    badge.className = 'kpi-footer-badge badge-negative';
+    card.title = 'Em atraso:\n' + cars.map(c =>
+      `• ${c.car.marca} ${c.car.modelo} (${c.car.placa}) — ${c.car.comprador || 'Comprador não informado'}: ${c.parcelas} parcela(s), ${formatMoney(c.valor)}, desde ${formatDate(c.maisAntiga)}`
+    ).join('\n') + '\n\nClique para ver o controle de pagamentos.';
+  }
+}
+
 function renderDashboardCharts() {
   const ctxLucro = document.getElementById('chartLucroCarros');
   const ctxCat = document.getElementById('chartCategoriasDespesas');
@@ -418,8 +593,8 @@ function renderDashboardCharts() {
   if (ctxLucro) {
     if (chartLucroInstance) chartLucroInstance.destroy();
 
-    // Comparativo de carros vendidos: Custo Final vs Venda
-    const sold = appData.veiculos.filter(v => v.status === 'Vendido');
+    // Comparativo de carros vendidos no período: Custo Final vs Venda
+    const sold = appData.veiculos.filter(v => v.status === 'Vendido' && isDateInDashboardPeriod(v.dataVenda));
     const labels = sold.map(v => `${v.marca} ${v.modelo.split(' ')[0]}`);
     const custos = sold.map(v => v.custoFinal);
     const vendas = sold.map(v => Number(v.valorVenda) || 0);
@@ -474,9 +649,9 @@ function renderDashboardCharts() {
   if (ctxCat) {
     if (chartCategoriasInstance) chartCategoriasInstance.destroy();
 
-    // Agrupamento por categoria
+    // Agrupamento por categoria (despesas do período)
     const catMap = {};
-    appData.despesas.forEach(d => {
+    appData.despesas.filter(d => isDateInDashboardPeriod(d.data)).forEach(d => {
       const cat = d.categoria || 'Outros';
       catMap[cat] = (catMap[cat] || 0) + (Number(d.valor) || 0);
     });
@@ -932,7 +1107,9 @@ function renderDetailCarPayments(car) {
       <td><strong>Parcela ${p.numeroParcela} / ${numParc}</strong></td>
       <td>${formatDate(p.dataVencimento)}</td>
       <td><strong>${formatMoney(p.valor)}</strong></td>
-      <td><span class="status-pill ${p.status === 'pago' ? 'pago' : 'pendente'}">${p.status.toUpperCase()}</span></td>
+      <td>${isInstallmentOverdue(p)
+        ? '<span class="status-pill atrasado">ATRASADO</span>'
+        : `<span class="status-pill ${p.status === 'pago' ? 'pago' : 'pendente'}">${p.status.toUpperCase()}</span>`}</td>
       <td>${p.dataPagamento ? formatDate(p.dataPagamento) : '-'}</td>
       <td>
         ${p.status !== 'pago'
@@ -1410,6 +1587,12 @@ function renderActiveFinancings() {
     const valorParc = v.valorParcela || 0;
     const saldoDevedor = pendentes.reduce((acc, p) => acc + (Number(p.valor) || 0), 0);
     const isQuitado = pendentes.length === 0 && totalParc > 0;
+    const atrasadas = pendentes.filter(isInstallmentOverdue).length;
+    const situacao = isQuitado
+      ? '<span class="status-pill pago">QUITADO</span>'
+      : (atrasadas > 0
+        ? `<span class="status-pill atrasado">${atrasadas} em atraso</span>`
+        : '<span class="status-pill upcoming">Em dia</span>');
 
     return `
       <tr>
@@ -1421,7 +1604,7 @@ function renderActiveFinancings() {
         <td><strong>${formatMoney(valorParc)}</strong></td>
         <td><span class="status-pill pago">${pagosCount} pagas</span></td>
         <td><strong style="color: ${isQuitado ? 'var(--success)' : 'var(--warning)'};">${formatMoney(saldoDevedor)}</strong></td>
-        <td><span class="status-pill ${isQuitado ? 'pago' : 'upcoming'}">${isQuitado ? 'QUITADO' : 'Em dia'}</span></td>
+        <td>${situacao}</td>
         <td>
           <div style="display: flex; gap: 6px; flex-wrap: wrap;">
             <button class="btn btn-secondary btn-sm" onclick="viewCarDetail(${v.id}, 'pagamentos')" title="Abrir Carnê Completo">Carnê</button>
@@ -2799,11 +2982,362 @@ function printReport() {
   window.print();
 }
 
-function printPaymentReceipt() {
-  window.print();
+function printSingleCarCarnet(carId) {
+  openModalCarnetPix(carId);
 }
 
-function printSingleCarCarnet(carId) {
-  viewCarDetail(carId, 'pagamentos');
-  setTimeout(() => window.print(), 300);
+// ============================================================================
+// MODAL 7: CARNÊ COM QR CODE PIX (padrão BR Code / EMV do Banco Central)
+// ============================================================================
+const PIX_CONFIG_STORAGE_KEY = 'automanage_toledo_pix';
+
+const PIX_KEY_PLACEHOLDERS = {
+  cpf: '000.000.000-00',
+  cnpj: '00.000.000/0000-00',
+  celular: '(11) 98765-4321',
+  email: 'financeiro@empresa.com.br',
+  aleatoria: '123e4567-e89b-12d3-a456-426614174000'
+};
+
+function escapeHtml(text) {
+  return String(text ?? '').replace(/[&<>"']/g, ch => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[ch]));
+}
+
+function loadPixConfig() {
+  try {
+    return JSON.parse(localStorage.getItem(PIX_CONFIG_STORAGE_KEY)) || {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function savePixConfig(config) {
+  try {
+    localStorage.setItem(PIX_CONFIG_STORAGE_KEY, JSON.stringify(config));
+  } catch (e) {
+    console.warn('Não foi possível salvar os dados do PIX:', e);
+  }
+}
+
+function getFinancedCars() {
+  return appData.veiculos.filter(v => v.status === 'Vendido' && (v.numParcelas > 0));
+}
+
+function openModalCarnetPix(carId = null) {
+  const financed = getFinancedCars();
+  if (financed.length === 0) {
+    showToast('Não há veículos com financiamento ou parcelamento cadastrados.');
+    return;
+  }
+
+  let targetId = Number(carId) || Number(currentDetailCarId);
+  if (!targetId || !financed.some(v => Number(v.id) === targetId)) {
+    targetId = financed[0].id;
+  }
+
+  const sel = document.getElementById('carnetVehSelect');
+  sel.innerHTML = financed.map(v => `
+    <option value="${v.id}" ${Number(v.id) === targetId ? 'selected' : ''}>
+      ${escapeHtml(`${v.marca} ${v.modelo} (${v.placa}) — ${v.comprador || 'Comprador não informado'}`)}
+    </option>
+  `).join('');
+
+  // Recupera os dados do recebedor usados na última geração
+  const config = loadPixConfig();
+  document.getElementById('carnetPixTipo').value = config.tipo || 'cpf';
+  document.getElementById('carnetPixChave').value = config.chave || '';
+  document.getElementById('carnetPixNome').value = config.nome || '';
+  document.getElementById('carnetPixCidade').value = config.cidade || '';
+  document.getElementById('carnetParcelasFiltro').value = 'pendentes';
+
+  updateCarnetPixKeyPlaceholder();
+  updateCarnetPixSummary();
+  openModal('modalCarnetPix');
+}
+
+function updateCarnetPixKeyPlaceholder() {
+  const tipo = document.getElementById('carnetPixTipo').value;
+  document.getElementById('carnetPixChave').placeholder = PIX_KEY_PLACEHOLDERS[tipo] || '';
+}
+
+function getCarnetInstallments(car, filtro) {
+  ensureInstallmentsForCar(car);
+  return appData.pagamentos
+    .filter(p => Number(p.veiculoId) === Number(car.id) && (filtro === 'todas' || p.status !== 'pago'))
+    .sort((a, b) => Number(a.numeroParcela) - Number(b.numeroParcela));
+}
+
+function updateCarnetPixSummary() {
+  const carId = Number(document.getElementById('carnetVehSelect').value);
+  const car = appData.veiculos.find(v => Number(v.id) === carId);
+  const box = document.getElementById('carnetSummary');
+  const btn = document.getElementById('btnGenerateCarnet');
+  if (!car) {
+    box.textContent = 'Selecione um veículo.';
+    btn.disabled = true;
+    return;
+  }
+
+  const filtro = document.getElementById('carnetParcelasFiltro').value;
+  const parcelas = getCarnetInstallments(car, filtro);
+  const pendentes = parcelas.filter(p => p.status !== 'pago');
+  const total = pendentes.reduce((acc, p) => acc + (Number(p.valor) || 0), 0);
+
+  box.innerHTML = parcelas.length === 0
+    ? '<strong style="color: var(--success);">✅ Este veículo não possui parcelas em aberto.</strong> Escolha "Todas as parcelas" para imprimir o histórico.'
+    : `<strong>${parcelas.length} parcela(s) no carnê</strong> • ${pendentes.length} com QR Code PIX • Total em aberto: <strong style="color: var(--warning);">${formatMoney(total)}</strong>`;
+  btn.disabled = parcelas.length === 0;
+}
+
+// Remove acentos e caracteres fora do padrão aceito pelo BR Code
+function sanitizePixText(text, maxLength) {
+  return String(text || '')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^A-Za-z0-9 .,\-/]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxLength);
+}
+
+function normalizePixKey(tipo, rawKey) {
+  const key = String(rawKey || '').trim();
+  const digits = key.replace(/\D/g, '');
+
+  if (tipo === 'cpf') {
+    return digits.length === 11 ? { key: digits } : { error: 'O CPF deve ter 11 dígitos.' };
+  }
+  if (tipo === 'cnpj') {
+    return digits.length === 14 ? { key: digits } : { error: 'O CNPJ deve ter 14 dígitos.' };
+  }
+  if (tipo === 'celular') {
+    if (digits.length === 10 || digits.length === 11) return { key: `+55${digits}` };
+    if (digits.startsWith('55') && (digits.length === 12 || digits.length === 13)) return { key: `+${digits}` };
+    return { error: 'Informe o celular com DDD. Ex: (11) 98765-4321.' };
+  }
+  if (tipo === 'email') {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(key) ? { key: key.toLowerCase() } : { error: 'E-mail inválido.' };
+  }
+  // Chave aleatória (EVP): UUID de 36 caracteres
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key)
+    ? { key: key.toLowerCase() }
+    : { error: 'Chave aleatória inválida. Ela tem o formato 123e4567-e89b-12d3-a456-426614174000.' };
+}
+
+function pixField(id, value) {
+  const str = String(value);
+  return `${id}${String(str.length).padStart(2, '0')}${str}`;
+}
+
+// CRC16-CCITT (polinômio 0x1021, valor inicial 0xFFFF), exigido no campo 63 do BR Code
+function pixCRC16(payload) {
+  let crc = 0xFFFF;
+  for (let i = 0; i < payload.length; i++) {
+    crc ^= payload.charCodeAt(i) << 8;
+    for (let bit = 0; bit < 8; bit++) {
+      crc = (crc & 0x8000) ? ((crc << 1) ^ 0x1021) : (crc << 1);
+      crc &= 0xFFFF;
+    }
+  }
+  return crc.toString(16).toUpperCase().padStart(4, '0');
+}
+
+function buildPixPayload({ chave, nome, cidade, valor, txid, descricao }) {
+  let merchantAccount = pixField('00', 'br.gov.bcb.pix') + pixField('01', chave);
+  // A descrição é opcional; só entra se couber no limite de 99 caracteres do campo 26
+  if (descricao) {
+    const withDesc = merchantAccount + pixField('02', descricao);
+    if (withDesc.length <= 99) merchantAccount = withDesc;
+  }
+
+  const payload =
+    pixField('00', '01') +
+    pixField('26', merchantAccount) +
+    pixField('52', '0000') +
+    pixField('53', '986') +
+    (valor > 0 ? pixField('54', Number(valor).toFixed(2)) : '') +
+    pixField('58', 'BR') +
+    pixField('59', nome) +
+    pixField('60', cidade) +
+    pixField('62', pixField('05', txid || '***')) +
+    '6304';
+
+  return payload + pixCRC16(payload);
+}
+
+function buildPixQrSvg(payload) {
+  const qr = qrcode(0, 'M');
+  qr.addData(payload);
+  qr.make();
+  return qr.createSvgTag({ cellSize: 4, margin: 2, scalable: true });
+}
+
+function handleGenerateCarnetPix(e) {
+  e.preventDefault();
+
+  if (typeof qrcode !== 'function') {
+    alert('Não foi possível carregar o gerador de QR Code. Verifique a conexão com a internet e recarregue a página.');
+    return;
+  }
+
+  const carId = Number(document.getElementById('carnetVehSelect').value);
+  const car = appData.veiculos.find(v => Number(v.id) === carId);
+  if (!car) {
+    showToast('Selecione um veículo válido.');
+    return;
+  }
+
+  const tipo = document.getElementById('carnetPixTipo').value;
+  const chaveDigitada = document.getElementById('carnetPixChave').value;
+  const nomeDigitado = document.getElementById('carnetPixNome').value;
+  const cidadeDigitada = document.getElementById('carnetPixCidade').value;
+
+  const { key, error } = normalizePixKey(tipo, chaveDigitada);
+  if (error) {
+    alert(error);
+    return;
+  }
+
+  const nome = sanitizePixText(nomeDigitado, 25).toUpperCase();
+  const cidade = sanitizePixText(cidadeDigitada, 15).toUpperCase();
+  if (!nome || !cidade) {
+    alert('Informe o nome e a cidade do recebedor (sem caracteres especiais).');
+    return;
+  }
+
+  const filtro = document.getElementById('carnetParcelasFiltro').value;
+  const parcelas = getCarnetInstallments(car, filtro);
+  if (parcelas.length === 0) {
+    showToast('Não há parcelas para gerar o carnê.');
+    return;
+  }
+
+  // A janela precisa ser aberta ainda dentro do clique para não ser bloqueada como pop-up
+  const win = window.open('', '_blank');
+  if (!win) {
+    alert('O navegador bloqueou a janela do carnê. Permita pop-ups para este site e tente novamente.');
+    return;
+  }
+
+  savePixConfig({ tipo, chave: chaveDigitada.trim(), nome: nomeDigitado.trim(), cidade: cidadeDigitada.trim() });
+
+  const placaId = sanitizePixText(car.placa, 10).replace(/[^A-Za-z0-9]/g, '').toUpperCase() || `V${car.id}`;
+  const slips = parcelas.map(p => {
+    const numero = String(p.numeroParcela).padStart(2, '0');
+    const isPago = p.status === 'pago';
+    const payload = isPago ? '' : buildPixPayload({
+      chave: key,
+      nome,
+      cidade,
+      valor: Number(p.valor) || 0,
+      txid: `${placaId}P${numero}`.slice(0, 25),
+      descricao: sanitizePixText(`Parcela ${p.numeroParcela}/${car.numParcelas} ${car.placa}`, 40)
+    });
+    return buildCarnetSlipHtml(car, p, { isPago, payload, chaveExibicao: chaveDigitada.trim(), nomeRecebedor: nomeDigitado.trim() });
+  }).join('');
+
+  win.document.open();
+  win.document.write(buildCarnetDocumentHtml(car, slips));
+  win.document.close();
+
+  closeModal('modalCarnetPix');
+  showToast(`Carnê gerado com ${parcelas.length} parcela(s).`);
+}
+
+function buildCarnetSlipHtml(car, p, { isPago, payload, chaveExibicao, nomeRecebedor }) {
+  const parcelaTxt = `${p.numeroParcela}/${car.numParcelas}`;
+  const veiculoTxt = `${car.marca} ${car.modelo} (${car.ano || '-'})`;
+
+  const pixBlock = isPago
+    ? `<div class="paid-stamp">PAGO<small>${formatDate(p.dataPagamento)}</small></div>`
+    : `<div class="qr">${buildPixQrSvg(payload)}</div>
+       <div class="qr-caption">Pague com PIX</div>`;
+
+  return `
+    <div class="slip">
+      <div class="stub">
+        <div class="stub-title">Canhoto</div>
+        <div class="field"><span>Parcela</span><strong>${escapeHtml(parcelaTxt)}</strong></div>
+        <div class="field"><span>Vencimento</span><strong>${formatDate(p.dataVencimento)}</strong></div>
+        <div class="field"><span>Valor</span><strong>${formatMoney(p.valor)}</strong></div>
+        <div class="field"><span>Placa</span><strong>${escapeHtml(car.placa)}</strong></div>
+        <div class="field"><span>Comprador</span><strong>${escapeHtml(car.comprador || '-')}</strong></div>
+        <div class="field"><span>Pago em</span><strong>____/____/______</strong></div>
+      </div>
+      <div class="main">
+        <div class="main-header">
+          <span>Carnê de Pagamento</span>
+          <strong>Parcela ${escapeHtml(parcelaTxt)}</strong>
+        </div>
+        <div class="main-body">
+          <div class="info">
+            <div class="field"><span>Recebedor</span><strong>${escapeHtml(nomeRecebedor)}</strong></div>
+            <div class="field"><span>Comprador</span><strong>${escapeHtml(car.comprador || '-')}</strong></div>
+            <div class="field"><span>Veículo</span><strong>${escapeHtml(veiculoTxt)} • ${escapeHtml(car.placa)}</strong></div>
+            <div class="row">
+              <div class="field"><span>Vencimento</span><strong class="big">${formatDate(p.dataVencimento)}</strong></div>
+              <div class="field"><span>Valor</span><strong class="big">${formatMoney(p.valor)}</strong></div>
+            </div>
+            <div class="field"><span>Chave PIX</span><strong>${escapeHtml(chaveExibicao)}</strong></div>
+            ${isPago ? '' : `<div class="field"><span>PIX Copia e Cola</span><code>${escapeHtml(payload)}</code></div>`}
+          </div>
+          <div class="pix">${pixBlock}</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function buildCarnetDocumentHtml(car, slipsHtml) {
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Carnê ${escapeHtml(car.placa)} - ${escapeHtml(car.comprador || '')}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, Helvetica, sans-serif; color: #111; background: #f1f5f9; }
+  .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 16px; background: #0f172a; color: #fff; position: sticky; top: 0; }
+  .toolbar button { background: #2563eb; color: #fff; border: 0; border-radius: 8px; padding: 8px 16px; font-weight: 700; cursor: pointer; }
+  .sheet { max-width: 190mm; margin: 16px auto; }
+  .slip { display: grid; grid-template-columns: 48mm 1fr; background: #fff; border: 1px solid #333; margin-bottom: 6mm; height: 86mm; break-inside: avoid; page-break-inside: avoid; position: relative; }
+  .slip::after { content: '✂'; position: absolute; left: 44.5mm; top: -3mm; font-size: 11px; color: #555; }
+  .stub { border-right: 1px dashed #333; padding: 4mm; display: flex; flex-direction: column; gap: 2.2mm; }
+  .stub-title { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #555; }
+  .main { display: flex; flex-direction: column; }
+  .main-header { display: flex; justify-content: space-between; align-items: center; padding: 2.5mm 4mm; background: #111; color: #fff; font-size: 12px; text-transform: uppercase; }
+  .main-header strong { font-size: 14px; }
+  .main-body { flex: 1; display: grid; grid-template-columns: 1fr 42mm; gap: 3mm; padding: 3mm 4mm; min-height: 0; }
+  .info { display: flex; flex-direction: column; gap: 1.6mm; min-width: 0; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 3mm; }
+  .field { display: flex; flex-direction: column; min-width: 0; }
+  .field span { font-size: 7.5px; text-transform: uppercase; color: #555; letter-spacing: 0.5px; }
+  .field strong { font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .field strong.big { font-size: 15px; }
+  .field code { font-family: 'Courier New', monospace; font-size: 6.5px; line-height: 1.25; word-break: break-all; color: #333; }
+  .pix { display: flex; flex-direction: column; align-items: center; justify-content: center; border-left: 1px solid #ddd; padding-left: 3mm; }
+  .qr { width: 38mm; height: 38mm; }
+  .qr svg { width: 100%; height: 100%; display: block; }
+  .qr-caption { margin-top: 1.5mm; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+  .paid-stamp { border: 3px solid #059669; color: #059669; font-size: 22px; font-weight: 800; padding: 3mm 5mm; transform: rotate(-12deg); text-align: center; display: flex; flex-direction: column; }
+  .paid-stamp small { font-size: 10px; font-weight: 700; }
+  @media print {
+    @page { size: A4; margin: 10mm; }
+    body { background: #fff; }
+    .toolbar { display: none; }
+    .sheet { margin: 0; max-width: none; }
+    .slip:nth-child(3n) { page-break-after: always; }
+  }
+</style>
+</head>
+<body>
+  <div class="toolbar">
+    <span>Carnê de ${escapeHtml(car.comprador || 'comprador')} • ${escapeHtml(`${car.marca} ${car.modelo}`)} • ${escapeHtml(car.placa)}</span>
+    <button onclick="window.print()">🖨️ Imprimir / Salvar PDF</button>
+  </div>
+  <div class="sheet">${slipsHtml}</div>
+  <script>window.addEventListener('load', function () { setTimeout(function () { window.print(); }, 300); });<\/script>
+</body>
+</html>`;
 }

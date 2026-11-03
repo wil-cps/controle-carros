@@ -503,6 +503,10 @@ h1, h2, h3, h4, .brand-text {
 .kpi-icon-pill.green { background: var(--success-light); color: var(--success); }
 .kpi-icon-pill.amber { background: var(--warning-light); color: var(--warning); }
 .kpi-icon-pill.purple { background: var(--purple-light); color: var(--purple); }
+.kpi-icon-pill.red { background: var(--danger-light); color: var(--danger); }
+
+.kpi-card-clickable { cursor: pointer; }
+.kpi-card-clickable:hover { border-color: var(--border-focus); }
 
 .kpi-label {
   font-size: 0.83rem;
@@ -539,6 +543,11 @@ h1, h2, h3, h4, .brand-text {
 .badge-neutral {
   background-color: var(--primary-light);
   color: var(--primary);
+}
+
+.badge-negative {
+  background-color: var(--danger-light);
+  color: var(--danger);
 }
 
 /* ==========================================================================
@@ -737,6 +746,50 @@ h1, h2, h3, h4, .brand-text {
 .view-mode-btn.active {
   background: var(--primary);
   color: white;
+}
+
+/* Filtro de período do dashboard */
+.dash-period-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dash-period-nav strong {
+  min-width: 170px;
+  text-align: center;
+  font-size: 0.9rem;
+}
+
+.dash-period-arrow {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  color: var(--text-main);
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: border-color var(--transition-fast);
+}
+
+.dash-period-arrow:hover:not(:disabled) {
+  border-color: var(--border-focus);
+}
+
+.dash-period-arrow:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.dash-period-date {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  font-weight: 600;
 }
 
 /* ==========================================================================
