@@ -748,6 +748,96 @@ h1, h2, h3, h4, .brand-text {
   color: white;
 }
 
+/* Tela de login */
+body.auth-locked .app-wrapper {
+  display: none;
+}
+
+.auth-screen {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: var(--bg-main);
+  z-index: 900;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 420px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: 32px 28px;
+}
+
+.auth-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.auth-brand .brand-title {
+  display: block;
+  font-size: 1.2rem;
+  font-weight: 800;
+}
+
+.auth-brand .brand-subtitle {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.auth-subtitle {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  margin-bottom: 16px;
+}
+
+.auth-error {
+  display: none;
+  background: var(--danger-light);
+  color: var(--danger);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-size: 0.85rem;
+  margin-bottom: 16px;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.auth-form .btn {
+  justify-content: center;
+  margin-top: 8px;
+}
+
+/* Perfil de visualização (sócio): esconde tudo que altera dados */
+body.perfil-visualizacao .admin-only,
+body.perfil-visualizacao [onclick^="openModalAdd"],
+body.perfil-visualizacao [onclick^="editCarById"],
+body.perfil-visualizacao [onclick^="editCurrentCar"],
+body.perfil-visualizacao [onclick^="openModalSellVehicle"],
+body.perfil-visualizacao [onclick^="revertSale"],
+body.perfil-visualizacao [onclick^="deleteExpense"],
+body.perfil-visualizacao [onclick^="deleteDocument"],
+body.perfil-visualizacao [onclick^="openModalEditInstallments"],
+body.perfil-visualizacao [onclick^="openModalSettlement"],
+body.perfil-visualizacao [onclick^="openModalRegisterPayment"],
+body.perfil-visualizacao [onclick^="togglePayInstallment"],
+body.perfil-visualizacao [onclick^="resetToSpreadsheetDefaults"] {
+  display: none !important;
+}
+
 /* Filtro de período do dashboard */
 .dash-period-nav {
   display: flex;

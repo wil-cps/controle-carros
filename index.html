@@ -11,7 +11,7 @@
   <!-- Gerador de QR Code para o carnê com PIX -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
 </head>
-<body>
+<body class="auth-locked">
 
   <div class="app-wrapper">
     <!-- ====================================================================
@@ -66,6 +66,11 @@
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
           <span>Exportar / Excel</span>
         </a>
+
+        <a class="nav-item" id="navUsers" onclick="switchView('users')" style="display: none;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          <span>Usuários</span>
+        </a>
       </nav>
 
       <div class="sidebar-footer">
@@ -75,7 +80,7 @@
             Sincronizado
           </div>
           <div class="promo-card-desc">
-            Base conectada com a planilha <strong>Toledo_v2</strong>. Dados salvos com persistência local.
+            Base conectada com a planilha <strong>Toledo_v2</strong>. Dados salvos no servidor.
           </div>
         </div>
       </div>
@@ -104,13 +109,17 @@
             <span>Novo Carro</span>
           </button>
 
-          <div class="user-profile-badge">
-            <div class="user-avatar">T</div>
+          <div class="user-profile-badge" onclick="openModalChangePassword()" title="Alterar minha senha" style="cursor: pointer;">
+            <div class="user-avatar" id="userAvatar">?</div>
             <div class="user-info-text">
-              <span class="user-name">Toledo Motors</span>
-              <span class="user-role">Administrador</span>
+              <span class="user-name" id="userName">-</span>
+              <span class="user-role" id="userRole">-</span>
             </div>
           </div>
+
+          <button class="theme-toggle-btn" onclick="logout()" title="Sair do sistema">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
+          </button>
         </div>
       </header>
 
@@ -338,9 +347,7 @@
             </select>
 
             <select class="select-control" id="filterSociedade" onchange="applyVehicleFilters()">
-              <option value="todos">Todas as Sociedades</option>
-              <option value="Lagoa">Sociedade Lagoa</option>
-              <option value="sem_sociedade">Sem Sociedade</option>
+              <option value="todos">Todos os Sócios</option>
             </select>
           </div>
 
@@ -897,7 +904,7 @@
             </p>
             <div style="display: flex; flex-direction: column; gap: 10px;">
               <button class="btn btn-primary" onclick="exportFullJSONBackup()">Baixar Arquivo de Backup (JSON)</button>
-              <label class="btn btn-secondary" style="cursor: pointer;">
+              <label class="btn btn-secondary admin-only" style="cursor: pointer;">
                 Restaurar Backup de Arquivo
                 <input type="file" id="importJSONInput" accept=".json" style="display: none;" onchange="importJSONBackup(event)">
               </label>
@@ -905,7 +912,7 @@
           </div>
 
           <!-- Card 3: Restaurar Planilha Original Toledo_v2 -->
-          <div class="kpi-card" style="padding: 28px; border-color: rgba(239, 68, 68, 0.3);">
+          <div class="kpi-card admin-only" style="padding: 28px; border-color: rgba(239, 68, 68, 0.3);">
             <div class="kpi-icon-pill amber" style="margin-bottom: 12px;">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
             </div>
@@ -917,7 +924,73 @@
           </div>
         </div>
       </section>
+
+      <!-- ====================================================================
+           PÁGINA: CADASTRO DE USUÁRIOS E CONTROLE DE ACESSO
+           ==================================================================== -->
+      <section class="page-container page-view" id="viewUsers" style="display: none;">
+        <div class="page-header">
+          <div>
+            <h1 class="page-header-title">Usuários & Controle de Acesso</h1>
+            <p class="page-header-subtitle">Acesso total edita tudo; visualização (sócio) vê somente os carros em que é sócio, sem poder alterar</p>
+          </div>
+          <button class="btn btn-primary" onclick="openModalUser()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg>
+            Novo Usuário
+          </button>
+        </div>
+
+        <div class="schedule-table-card">
+          <div class="table-responsive-wrapper">
+            <table class="modern-table">
+              <thead>
+                <tr>
+                  <th>Nome</th>
+                  <th>Login</th>
+                  <th>Perfil</th>
+                  <th>Sócio em</th>
+                  <th>Situação</th>
+                  <th>Ações</th>
+                </tr>
+              </thead>
+              <tbody id="usersTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
     </main>
+  </div>
+
+  <!-- ====================================================================
+       TELA DE LOGIN / PRIMEIRO ACESSO
+       ==================================================================== -->
+  <div class="auth-screen" id="authScreen">
+    <div class="auth-card">
+      <div class="auth-brand">
+        <div class="brand-logo-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/></svg>
+        </div>
+        <div>
+          <div class="brand-title">AutoManage</div>
+          <div class="brand-subtitle">Toledo Veículos</div>
+        </div>
+      </div>
+      <p class="auth-subtitle" id="authSubtitle">Conectando ao servidor...</p>
+      <div class="auth-error" id="authError"></div>
+
+      <form class="auth-form" id="authLoginForm" onsubmit="handleLogin(event)" style="display: none;">
+        <div class="form-group">
+          <label for="loginUsuario">Login</label>
+          <input type="text" id="loginUsuario" class="input-control" required autocomplete="username">
+        </div>
+        <div class="form-group">
+          <label for="loginSenha">Senha</label>
+          <input type="password" id="loginSenha" class="input-control" required autocomplete="current-password">
+        </div>
+        <button type="submit" class="btn btn-primary" id="btnLogin">Entrar</button>
+      </form>
+
+    </div>
   </div>
 
   <!-- ====================================================================
@@ -993,8 +1066,11 @@
               </select>
             </div>
             <div class="form-group">
-              <label for="vehSociedade">Sociedade / Parceiro</label>
-              <input type="text" id="vehSociedade" class="input-control" placeholder="Ex: Lagoa ou vazio">
+              <label for="vehSocio">Sócio</label>
+              <select id="vehSocio" class="select-control">
+                <option value="">Próprio (sem sócio)</option>
+              </select>
+              <small id="vehSocioHint" style="color: var(--text-dim); margin-top: 4px;">O sócio com perfil de visualização enxerga somente os carros vinculados a ele.</small>
             </div>
           </div>
 
@@ -1617,13 +1693,104 @@
     </div>
   </div>
 
+  <!-- ====================================================================
+       MODAL 8: CADASTRO / EDIÇÃO DE USUÁRIO
+       ==================================================================== -->
+  <div class="modal-backdrop" id="modalUser">
+    <div class="modal-window">
+      <div class="modal-header">
+        <h3 class="modal-title" id="modalUserTitle">Novo Usuário</h3>
+        <button class="modal-close-btn" onclick="closeModal('modalUser')">&times;</button>
+      </div>
+      <form id="formUser" onsubmit="handleSaveUser(event)">
+        <input type="hidden" id="userId" value="">
+        <div class="modal-body">
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label for="userNome">Nome *</label>
+              <input type="text" id="userNome" class="input-control" required maxlength="100" placeholder="Ex: Lagoa">
+            </div>
+            <div class="form-group">
+              <label for="userLogin">Login *</label>
+              <input type="text" id="userLogin" class="input-control" required maxlength="50" autocomplete="off">
+            </div>
+          </div>
+
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label for="userPerfil">Perfil de Acesso *</label>
+              <select id="userPerfil" class="select-control">
+                <option value="visualizacao">Visualização (sócio — só os carros dele)</option>
+                <option value="full">Acesso total (edita tudo e gerencia usuários)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="userSenha">Senha</label>
+              <input type="password" id="userSenha" class="input-control" minlength="6" autocomplete="new-password">
+              <small id="userSenhaHint" style="color: var(--text-dim); margin-top: 4px; display: block;"></small>
+            </div>
+          </div>
+
+          <div class="form-group" id="userAtivoGroup">
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+              <input type="checkbox" id="userAtivo" checked>
+              Usuário ativo (desmarque para bloquear o acesso sem excluir)
+            </label>
+          </div>
+
+          <small style="color: var(--text-dim); display: block;">
+            O nome do usuário aparece no campo "Sócio" do cadastro de veículos. Veículos antigos com a sociedade escrita igual ao nome (ex: "Lagoa") são vinculados automaticamente.
+          </small>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modalUser')">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Salvar Usuário</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ====================================================================
+       MODAL 9: ALTERAR MINHA SENHA
+       ==================================================================== -->
+  <div class="modal-backdrop" id="modalChangePassword">
+    <div class="modal-window" style="max-width: 440px;">
+      <div class="modal-header">
+        <h3 class="modal-title" id="pwdTitle">Alterar Minha Senha</h3>
+        <button class="modal-close-btn" id="pwdCloseBtn" onclick="closeModal('modalChangePassword')">&times;</button>
+      </div>
+      <form id="formChangePassword" onsubmit="handleChangePassword(event)">
+        <div class="modal-body">
+          <div class="auth-error" id="pwdForcedNotice" style="display: none; background: var(--warning-light); color: var(--warning); border-color: rgba(245, 158, 11, 0.3);">
+            Você está usando uma senha provisória. Defina uma nova senha para continuar.
+          </div>
+          <div class="form-group">
+            <label for="pwdAtual">Senha Atual *</label>
+            <input type="password" id="pwdAtual" class="input-control" required autocomplete="current-password">
+          </div>
+          <div class="form-group">
+            <label for="pwdNova">Nova Senha *</label>
+            <input type="password" id="pwdNova" class="input-control" required minlength="6" autocomplete="new-password">
+          </div>
+          <div class="form-group">
+            <label for="pwdConfirma">Confirmar Nova Senha *</label>
+            <input type="password" id="pwdConfirma" class="input-control" required minlength="6" autocomplete="new-password">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" id="pwdCancelBtn" onclick="closeModal('modalChangePassword')">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Alterar Senha</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- TOAST DE NOTIFICAÇÃO -->
   <div id="toastNotification" style="position: fixed; bottom: 24px; right: 24px; background: var(--bg-surface); border: 1px solid var(--border-color); border-left: 4px solid var(--primary); padding: 14px 20px; border-radius: var(--radius-md); box-shadow: var(--shadow-lg); display: none; align-items: center; gap: 12px; z-index: 999;">
     <span id="toastMsg" style="font-size: 0.9rem; font-weight: 600;">Ação realizada com sucesso!</span>
   </div>
 
   <!-- SCRIPTS DA APLICAÇÃO -->
-  <script src="data.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
