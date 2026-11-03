@@ -2094,6 +2094,8 @@ function openModalAddVehicle() {
   document.getElementById('vehRenavam').value = '';
   document.getElementById('vehChassi').value = '';
   document.getElementById('vehObservacoes').value = '';
+  const statusSel = document.getElementById('vehStatus');
+  if (statusSel) { statusSel.value = 'Em estoque'; statusSel.disabled = false; }
   document.getElementById('vehDataCompra').value = new Date().toISOString().slice(0, 10);
   populateVehicleSocioSelect();
   openModal('modalVehicle');
@@ -2121,6 +2123,18 @@ function editCarById(carId) {
   document.getElementById('vehDataCompra').value = car.dataCompra || '';
   document.getElementById('vehValorCompra').value = car.valorCompra || '';
   document.getElementById('vehValorFipe').value = car.valorFipe || '';
+
+  // Preencher status e desabilitar se vendido (alterado pela venda)
+  const statusSel = document.getElementById('vehStatus');
+  if (statusSel) {
+    if (car.status === 'Vendido') {
+      statusSel.value = 'Em estoque'; // Visualmente mostra opção mas fica desabilitado
+      statusSel.disabled = true;
+    } else {
+      statusSel.value = car.status || 'Em estoque';
+      statusSel.disabled = false;
+    }
+  }
 
   // Mostrar alerta de reverter venda apenas se o veículo está vendido
   const revertBlock = document.getElementById('revertSaleBlock');
@@ -2171,7 +2185,11 @@ function handleSaveVehicle(e) {
     dataCompra: document.getElementById('vehDataCompra').value,
     valorCompra: Number(document.getElementById('vehValorCompra').value) || 0,
     valorFipe: Number(document.getElementById('vehValorFipe').value) || 0,
-    status: isEdit ? (appData.veiculos.find(v => Number(v.id) === Number(idVal)).status || 'Em estoque') : 'Em estoque'
+    status: isEdit
+      ? (appData.veiculos.find(v => Number(v.id) === Number(idVal)).status === 'Vendido'
+        ? 'Vendido'
+        : (document.getElementById('vehStatus').value || 'Em estoque'))
+      : (document.getElementById('vehStatus').value || 'Em estoque')
   };
 
   if (isEdit) {
