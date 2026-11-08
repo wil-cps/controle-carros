@@ -1128,11 +1128,29 @@ function applyVehicleFilters() {
   renderInventory();
 }
 
+function normalizeSearch(str) {
+  if (!str) return '';
+  return String(str)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+function matchPlate(carPlate, searchNorm) {
+  if (!carPlate || !searchNorm) return false;
+  const plateClean = String(carPlate).replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+  const searchClean = searchNorm.replace(/[^a-zA-Z0-9]/g, '');
+  if (searchClean && plateClean.includes(searchClean)) return true;
+  return normalizeSearch(carPlate).includes(searchNorm);
+}
+
 function getFilteredVehicles() {
   const statusFilter = document.getElementById('filterStatus') ? document.getElementById('filterStatus').value : 'todos';
   const marcaFilter = document.getElementById('filterMarca') ? document.getElementById('filterMarca').value : 'todas';
   const socFilter = document.getElementById('filterSociedade') ? document.getElementById('filterSociedade').value : 'todos';
-  const searchTerm = (document.getElementById('globalSearchInput') ? document.getElementById('globalSearchInput').value : '').toLowerCase().trim();
+  const rawTerm = document.getElementById('globalSearchInput') ? document.getElementById('globalSearchInput').value : '';
+  const searchTerm = normalizeSearch(rawTerm);
 
   return appData.veiculos.filter(v => {
     // Status
@@ -1144,17 +1162,27 @@ function getFilteredVehicles() {
     if (socFilter.startsWith('socio:') && Number(v.socioId) !== Number(socFilter.slice(6))) return false;
     if (socFilter.startsWith('texto:') && (v.socioId || v.sociedade !== socFilter.slice(6))) return false;
 
-    // Busca textual
+    // Busca textual inteligente (multicampos, sem acento, placa limpa)
     if (searchTerm) {
       const match =
-        (v.modelo || '').toLowerCase().includes(searchTerm) ||
-        (v.marca || '').toLowerCase().includes(searchTerm) ||
-        (v.placa || '').toLowerCase().includes(searchTerm) ||
-        (v.comprador || '').toLowerCase().includes(searchTerm) ||
-        (v.antigoDono || '').toLowerCase().includes(searchTerm) ||
-        (v.renavam || '').toLowerCase().includes(searchTerm) ||
-        (v.chassi || v.chassis || '').toLowerCase().includes(searchTerm) ||
-        (v.observacoes || '').toLowerCase().includes(searchTerm);
+        normalizeSearch(v.modelo).includes(searchTerm) ||
+        normalizeSearch(v.marca).includes(searchTerm) ||
+        matchPlate(v.placa, searchTerm) ||
+        String(v.ano || '').includes(searchTerm) ||
+        normalizeSearch(v.cor).includes(searchTerm) ||
+        normalizeSearch(v.comprador).includes(searchTerm) ||
+        normalizeSearch(v.telefoneComprador).includes(searchTerm) ||
+        normalizeSearch(v.enderecoComprador).includes(searchTerm) ||
+        normalizeSearch(v.indicadoPor).includes(searchTerm) ||
+        normalizeSearch(v.antigoDono).includes(searchTerm) ||
+        normalizeSearch(v.renavam).includes(searchTerm) ||
+        normalizeSearch(v.chassi || v.chassis).includes(searchTerm) ||
+        normalizeSearch(v.combustivel).includes(searchTerm) ||
+        normalizeSearch(v.cambio).includes(searchTerm) ||
+        normalizeSearch(v.sociedade).includes(searchTerm) ||
+        normalizeSearch(v.status).includes(searchTerm) ||
+        normalizeSearch(v.observacoes).includes(searchTerm);
+
       if (!match) return false;
     }
 
@@ -1373,6 +1401,41 @@ function renderVehicleDetail(carId) {
     if (btnRevert) btnRevert.style.display = 'none';
   }
 
+  // Preencher Bloco de Dados do Comprador
+  const buyerBox = document.getElementById('detailBuyerBox');
+  if (buyerBox) {
+    if (car.status === 'Vendido') {
+      buyerBox.style.display = 'flex';
+      const nameEl = document.getElementById('detailBuyerName');
+      const contactEl = document.getElementById('detailBuyerContact');
+      const addrEl = document.getElementById('detailBuyerAddress');
+      const indEl = document.getElementById('detailBuyerIndicacao');
+
+      if (nameEl) nameEl.textContent = car.comprador || 'Comprador não informado';
+      if (contactEl) contactEl.textContent = car.telefoneComprador ? `📞 ${car.telefoneComprador}` : 'Sem contato cadastrado';
+      if (addrEl) {
+        if (car.enderecoComprador) {
+          addrEl.textContent = `📍 ${car.enderecoComprador}`;
+          addrEl.style.display = 'block';
+        } else {
+          addrEl.textContent = '';
+          addrEl.style.display = 'none';
+        }
+      }
+      if (indEl) {
+        if (car.indicadoPor) {
+          indEl.textContent = `🤝 Indicação: ${car.indicadoPor}`;
+          indEl.style.display = 'block';
+        } else {
+          indEl.textContent = '';
+          indEl.style.display = 'none';
+        }
+      }
+    } else {
+      buyerBox.style.display = 'none';
+    }
+  }
+
   // Preencher Despesas Vinculadas
   const carExpenses = appData.despesas.filter(d => Number(d.veiculoId) === Number(car.id));
   document.getElementById('detailCarExpensesCount').textContent = carExpenses.length;
@@ -1575,6 +1638,8 @@ function togglePayInstallment(paymentId) {
 function renderExpensesTable() {
   const vehFilter = document.getElementById('filterExpenseVehicle') ? document.getElementById('filterExpenseVehicle').value : 'todos';
   const catFilter = document.getElementById('filterExpenseCategory') ? document.getElementById('filterExpenseCategory').value : 'todas';
+  const rawTerm = document.getElementById('globalSearchInput') ? document.getElementById('globalSearchInput').value : '';
+  const searchTerm = normalizeSearch(rawTerm);
 
   let list = appData.despesas;
 
@@ -1584,6 +1649,25 @@ function renderExpensesTable() {
 
   if (catFilter !== 'todas') {
     list = list.filter(d => d.categoria === catFilter);
+  }
+
+  if (searchTerm) {
+    list = list.filter(d => {
+      const car = appData.veiculos.find(v => Number(v.id) === Number(d.veiculoId));
+      return (
+        normalizeSearch(d.item).includes(searchTerm) ||
+        normalizeSearch(d.categoria).includes(searchTerm) ||
+        normalizeSearch(d.observacao).includes(searchTerm) ||
+        (car && (
+          normalizeSearch(car.modelo).includes(searchTerm) ||
+          normalizeSearch(car.marca).includes(searchTerm) ||
+          matchPlate(car.placa, searchTerm)
+        )) ||
+        normalizeSearch(d.placa).includes(searchTerm) ||
+        normalizeSearch(d.modelo).includes(searchTerm) ||
+        String(d.valor || '').includes(searchTerm)
+      );
+    });
   }
 
   const total = list.reduce((acc, d) => acc + (Number(d.valor) || 0), 0);
@@ -1656,6 +1740,26 @@ async function renderDocumentsGrid() {
     } else if (originFilter === 'link') {
       list = list.filter(d => d.origem === 'link' || (!d.temArquivoLocal && d.origem !== 'camera'));
     }
+  }
+
+  const rawTerm = document.getElementById('globalSearchInput') ? document.getElementById('globalSearchInput').value : '';
+  const searchTerm = normalizeSearch(rawTerm);
+
+  if (searchTerm) {
+    list = list.filter(doc => {
+      const car = appData.veiculos.find(v => Number(v.id) === Number(doc.veiculoId));
+      return (
+        normalizeSearch(doc.nome).includes(searchTerm) ||
+        normalizeSearch(doc.tipo).includes(searchTerm) ||
+        normalizeSearch(doc.observacoes || doc.obs).includes(searchTerm) ||
+        normalizeSearch(doc.origem).includes(searchTerm) ||
+        (car && (
+          normalizeSearch(car.modelo).includes(searchTerm) ||
+          normalizeSearch(car.marca).includes(searchTerm) ||
+          matchPlate(car.placa, searchTerm)
+        ))
+      );
+    });
   }
 
   const container = document.getElementById('documentsGridContainer');
@@ -2001,7 +2105,20 @@ function renderActiveFinancings() {
   const tbody = document.getElementById('activeFinancingTableBody');
   if (!tbody) return;
 
-  const soldFinanced = appData.veiculos.filter(v => v.status === 'Vendido' && (v.numParcelas > 0));
+  let soldFinanced = appData.veiculos.filter(v => v.status === 'Vendido' && (v.numParcelas > 0));
+  const rawTerm = document.getElementById('globalSearchInput') ? document.getElementById('globalSearchInput').value : '';
+  const searchTerm = normalizeSearch(rawTerm);
+
+  if (searchTerm) {
+    soldFinanced = soldFinanced.filter(v => (
+      normalizeSearch(v.modelo).includes(searchTerm) ||
+      normalizeSearch(v.marca).includes(searchTerm) ||
+      matchPlate(v.placa, searchTerm) ||
+      normalizeSearch(v.comprador).includes(searchTerm) ||
+      normalizeSearch(v.telefoneComprador).includes(searchTerm) ||
+      normalizeSearch(v.indicadoPor).includes(searchTerm)
+    ));
+  }
 
   if (soldFinanced.length === 0) {
     tbody.innerHTML = '<tr><td colspan="10" style="text-align: center; padding: 20px; color: var(--text-dim);">Nenhum financiamento ativo no momento.</td></tr>';
@@ -2074,17 +2191,46 @@ function closeModal(modalId) {
   }, 300);
 }
 
-// Fechar modal ao clicar no backdrop escuro ou pressionar ESC
+// Fechar modal ao clicar no backdrop escuro ou pressionar ESC (com confirmação)
+let modalMouseDownTarget = null;
+document.addEventListener('mousedown', (e) => {
+  modalMouseDownTarget = e.target;
+});
+
 document.addEventListener('click', (e) => {
   if (e.target && e.target.classList.contains('modal-backdrop')) {
-    closeModal(e.target.id);
+    // Só trata como clique fora se o mousedown também começou fora da janela modal
+    if (modalMouseDownTarget && modalMouseDownTarget.classList.contains('modal-backdrop')) {
+      const modalId = e.target.id;
+      if (!modalId) return;
+      const modalEl = document.getElementById(modalId);
+      if (modalEl && modalEl.dataset.locked === '1') return;
+
+      const sair = confirm('Deseja sair sem salvar as alterações?');
+      if (sair) {
+        if (modalId === 'modalDocument') {
+          closeModalDocument();
+        } else {
+          closeModal(modalId);
+        }
+      }
+    }
   }
 });
 
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     const activeModal = document.querySelector('.modal-backdrop.show');
-    if (activeModal) closeModal(activeModal.id);
+    if (activeModal && activeModal.dataset.locked !== '1') {
+      const sair = confirm('Deseja sair sem salvar as alterações?');
+      if (sair) {
+        if (activeModal.id === 'modalDocument') {
+          closeModalDocument();
+        } else {
+          closeModal(activeModal.id);
+        }
+      }
+    }
   }
 });
 
@@ -2235,6 +2381,8 @@ function openModalSellVehicle(carId = null) {
   document.getElementById('sellData').value = new Date().toISOString().slice(0, 10);
   document.getElementById('sellComprador').value = '';
   document.getElementById('sellTelefone').value = '';
+  document.getElementById('sellEndereco').value = car.enderecoComprador || '';
+  document.getElementById('sellIndicadoPor').value = car.indicadoPor || '';
   document.getElementById('sellValor').value = car.valorFipe || '';
   document.getElementById('sellEntrada').value = '';
   document.getElementById('sellNumParcelas').value = '36';
@@ -2268,6 +2416,8 @@ function handleSaveSale(e) {
   const dataVenda = document.getElementById('sellData').value;
   const comprador = document.getElementById('sellComprador').value.trim();
   const telefone = document.getElementById('sellTelefone').value.trim();
+  const endereco = document.getElementById('sellEndereco') ? document.getElementById('sellEndereco').value.trim() : '';
+  const indicadoPor = document.getElementById('sellIndicadoPor') ? document.getElementById('sellIndicadoPor').value.trim() : '';
   const valorVenda = Number(document.getElementById('sellValor').value) || 0;
   const tipo = document.getElementById('sellTipo').value;
   const valorEntrada = Number(document.getElementById('sellEntrada').value) || 0;
@@ -2278,6 +2428,8 @@ function handleSaveSale(e) {
   car.dataVenda = dataVenda;
   car.comprador = comprador;
   car.telefoneComprador = telefone;
+  car.enderecoComprador = endereco;
+  car.indicadoPor = indicadoPor;
   car.valorVenda = valorVenda;
   car.parcelamento = tipo;
   car.valorEntrada = valorEntrada;
@@ -2339,6 +2491,8 @@ function revertSale() {
   car.dataVenda = '';
   car.comprador = '';
   car.telefoneComprador = '';
+  car.enderecoComprador = '';
+  car.indicadoPor = '';
   car.valorVenda = 0;
   car.parcelamento = '';
   car.valorEntrada = 0;
@@ -2773,6 +2927,9 @@ async function handleSaveDocument(e) {
 // ============================================================================
 // MODAL 5: AJUSTAR QUANTIDADE E VALOR DE PARCELAS
 // ============================================================================
+let editInstPlan = { carId: null, parcelas: [] };
+let editInstLastEditedValue = null;
+
 function openModalEditInstallments(carId) {
   try {
     const targetId = Number(carId) || Number(currentDetailCarId);
@@ -2794,14 +2951,59 @@ function openModalEditInstallments(carId) {
     document.getElementById('editInstCarName').textContent = `${car.marca} ${car.modelo} (${car.placa})`;
     document.getElementById('editInstCurrentPlan').textContent = `Plano atual: ${car.numParcelas || 0}x de ${formatMoney(car.valorParcela || 0)} • Entrada: ${formatMoney(car.valorEntrada || 0)} • Comprador: ${car.comprador || '-'}`;
 
-    document.getElementById('editInstNumParcelas').value = car.numParcelas || 1;
-    document.getElementById('editInstValorParcela').value = car.valorParcela || 0;
-    document.getElementById('editInstValorEntrada').value = car.valorEntrada || 0;
+    const numParc = Number(car.numParcelas) || 1;
+    const valParc = Number(car.valorParcela) || 0;
+    const valEntrada = Number(car.valorEntrada) || 0;
+
+    document.getElementById('editInstNumParcelas').value = numParc;
+    document.getElementById('editInstValorParcela').value = valParc > 0 ? valParc : '';
+    document.getElementById('editInstValorEntrada').value = valEntrada;
 
     // Próxima data de vencimento padrão
     const nextDueDate = new Date();
     nextDueDate.setMonth(nextDueDate.getMonth() + 1);
     document.getElementById('editInstDataVencimento').value = nextDueDate.toISOString().slice(0, 10);
+
+    // Carregar parcelas existentes ou gerar virtualmente para o plano
+    let existing = appData.pagamentos.filter(p => Number(p.veiculoId) === car.id);
+    existing.sort((a, b) => Number(a.numeroParcela) - Number(b.numeroParcela));
+
+    if (existing.length === 0) {
+      const baseDate = new Date(car.dataVenda || new Date());
+      for (let i = 1; i <= numParc; i++) {
+        const d = new Date(baseDate);
+        d.setMonth(d.getMonth() + i);
+        const dStr = d.toISOString().slice(0, 10);
+        existing.push({
+          id: Date.now() + i,
+          veiculoId: car.id,
+          numeroParcela: i,
+          dataVencimento: dStr,
+          dataPagamento: '',
+          valor: valParc,
+          status: 'pendente',
+          mesRef: dStr.slice(0, 7)
+        });
+      }
+    }
+
+    editInstPlan = {
+      carId: car.id,
+      parcelas: existing.map(p => ({
+        id: p.id,
+        numeroParcela: Number(p.numeroParcela),
+        dataVencimento: p.dataVencimento || '',
+        dataPagamento: p.dataPagamento || '',
+        valor: Number(p.valor) || valParc,
+        status: p.status || 'pendente',
+        mesRef: p.mesRef || ''
+      }))
+    };
+
+    // Popula o seletor de parcelas e seleciona a primeira pendente
+    const firstPendente = editInstPlan.parcelas.find(p => p.status !== 'pago');
+    const initialNum = firstPendente ? firstPendente.numeroParcela : (editInstPlan.parcelas[0] ? editInstPlan.parcelas[0].numeroParcela : 1);
+    populateEditInstParcelaSelect(initialNum);
 
     recalcEditInstTotal();
     openModal('modalEditInstallments');
@@ -2811,13 +3013,174 @@ function openModalEditInstallments(carId) {
   }
 }
 
+function populateEditInstParcelaSelect(selectedNum = null) {
+  const sel = document.getElementById('editInstSelectParcela');
+  const badge = document.getElementById('editInstParcelasBadge');
+  if (!sel || !editInstPlan || !editInstPlan.parcelas) return;
+
+  const total = editInstPlan.parcelas.length;
+  if (badge) badge.textContent = `${total} parcela${total !== 1 ? 's' : ''}`;
+
+  sel.innerHTML = editInstPlan.parcelas.map(p => {
+    const statusText = p.status === 'pago' ? '✅ PAGO' : '⏳ Pendente';
+    const vencText = p.dataVencimento ? formatDate(p.dataVencimento) : 'Sem data';
+    return `<option value="${p.numeroParcela}">Parcela ${p.numeroParcela} de ${total} • ${formatMoney(p.valor)} • Venc: ${vencText} (${statusText})</option>`;
+  }).join('');
+
+  if (selectedNum !== null) {
+    sel.value = String(selectedNum);
+  } else if (sel.options.length > 0) {
+    sel.selectedIndex = 0;
+  }
+
+  onEditInstParcelaSelected();
+}
+
+function onEditInstParcelaSelected() {
+  const sel = document.getElementById('editInstSelectParcela');
+  const valInput = document.getElementById('editInstValorIndividual');
+  const notice = document.getElementById('editInstParcelaNotice');
+  if (!sel || !valInput || !editInstPlan || !editInstPlan.parcelas) return;
+
+  const numParc = Number(sel.value);
+  const p = editInstPlan.parcelas.find(item => item.numeroParcela === numParc);
+  if (p) {
+    const val = Number(p.valor) || 0;
+    valInput.value = val.toFixed(2);
+    editInstLastEditedValue = val;
+
+    if (notice) {
+      if (p.status === 'pago') {
+        notice.innerHTML = `<span style="color: var(--warning);">⚠️ Esta parcela já consta como <strong>PAGA</strong> (${p.dataPagamento ? formatDate(p.dataPagamento) : 'Pago'}). Alterar o valor afetará o histórico.</span>`;
+      } else {
+        notice.innerHTML = `Vencimento em <strong>${p.dataVencimento ? formatDate(p.dataVencimento) : 'Sem data'}</strong> • Status: <strong>Pendente</strong>.`;
+      }
+    }
+  }
+}
+
+function onEditInstValorIndividualChange(isManualClick = false) {
+  const sel = document.getElementById('editInstSelectParcela');
+  const valInput = document.getElementById('editInstValorIndividual');
+  if (!sel || !valInput || !editInstPlan || !editInstPlan.parcelas) return;
+
+  const numParc = Number(sel.value);
+  const novoValor = Number(valInput.value);
+
+  if (isNaN(novoValor) || novoValor <= 0) {
+    showToast('Informe um valor válido maior que zero para a parcela.');
+    valInput.focus();
+    return;
+  }
+
+  const p = editInstPlan.parcelas.find(item => item.numeroParcela === numParc);
+  if (!p) return;
+
+  // Se o valor não mudou e não foi clique manual, não precisa disparar confirmação
+  if (!isManualClick && editInstLastEditedValue !== null && Math.abs(novoValor - editInstLastEditedValue) < 0.001) {
+    return;
+  }
+
+  // Atualiza o valor da parcela selecionada
+  p.valor = novoValor;
+  editInstLastEditedValue = novoValor;
+
+  // Pergunta ao usuário se deseja atualizar o valor das demais parcelas
+  const confirmMsg = `Deseja atualizar o valor das demais parcelas com base no novo valor de ${formatMoney(novoValor)} informado para a Parcela ${numParc}?`;
+  const atualizarDemais = confirm(confirmMsg);
+
+  if (atualizarDemais) {
+    // Com base no valor informado na parcela selecionada, recalcula as demais parcelas
+    editInstPlan.parcelas.forEach(item => {
+      if (item.numeroParcela !== numParc) {
+        if (item.status !== 'pago') {
+          item.valor = novoValor;
+        }
+      }
+    });
+
+    // Atualiza também o campo de valor padrão das parcelas
+    const valPadraoInput = document.getElementById('editInstValorParcela');
+    if (valPadraoInput) valPadraoInput.value = novoValor.toFixed(2);
+
+    populateEditInstParcelaSelect(numParc);
+    recalcEditInstTotal();
+    showToast(`Valor de ${formatMoney(novoValor)} aplicado às demais parcelas pendentes.`);
+  } else {
+    populateEditInstParcelaSelect(numParc);
+    recalcEditInstTotal();
+    showToast(`Valor da Parcela ${numParc} alterado para ${formatMoney(novoValor)}. Demais parcelas mantidas.`);
+  }
+}
+
+function onEditInstValorPadraoChange() {
+  const valPadrao = Number(document.getElementById('editInstValorParcela').value) || 0;
+  if (valPadrao <= 0 || !editInstPlan || !editInstPlan.parcelas) return;
+
+  // Atualiza as parcelas pendentes com o novo valor padrão
+  editInstPlan.parcelas.forEach(p => {
+    if (p.status !== 'pago') {
+      p.valor = valPadrao;
+    }
+  });
+
+  const sel = document.getElementById('editInstSelectParcela');
+  const currentNum = sel ? Number(sel.value) : null;
+  populateEditInstParcelaSelect(currentNum);
+  recalcEditInstTotal();
+}
+
+function onEditInstNumParcelasChange() {
+  const newNum = Number(document.getElementById('editInstNumParcelas').value) || 1;
+  if (newNum < 1 || !editInstPlan || !editInstPlan.parcelas) return;
+
+  const currentCount = editInstPlan.parcelas.length;
+  const valPadrao = Number(document.getElementById('editInstValorParcela').value) || 0;
+
+  if (newNum > currentCount) {
+    // Adiciona parcelas
+    let lastDate = new Date();
+    if (currentCount > 0 && editInstPlan.parcelas[currentCount - 1].dataVencimento) {
+      lastDate = new Date(editInstPlan.parcelas[currentCount - 1].dataVencimento);
+    }
+    for (let i = currentCount + 1; i <= newNum; i++) {
+      const d = new Date(lastDate);
+      d.setMonth(d.getMonth() + (i - currentCount));
+      const dStr = d.toISOString().slice(0, 10);
+      editInstPlan.parcelas.push({
+        id: Date.now() + i,
+        numeroParcela: i,
+        dataVencimento: dStr,
+        dataPagamento: '',
+        valor: valPadrao,
+        status: 'pendente',
+        mesRef: dStr.slice(0, 7)
+      });
+    }
+  } else if (newNum < currentCount) {
+    // Remove as últimas parcelas excedentes
+    editInstPlan.parcelas = editInstPlan.parcelas.slice(0, newNum);
+  }
+
+  const sel = document.getElementById('editInstSelectParcela');
+  let currentNum = sel ? Number(sel.value) : 1;
+  if (currentNum > newNum) currentNum = newNum;
+  populateEditInstParcelaSelect(currentNum);
+  recalcEditInstTotal();
+}
+
 function recalcEditInstTotal() {
-  const n = Number(document.getElementById('editInstNumParcelas').value) || 0;
-  const v = Number(document.getElementById('editInstValorParcela').value) || 0;
-  const e = Number(document.getElementById('editInstValorEntrada').value) || 0;
-  const total = e + (n * v);
+  if (!editInstPlan || !editInstPlan.parcelas) return;
+
+  const somaParcelas = editInstPlan.parcelas.reduce((acc, p) => acc + (Number(p.valor) || 0), 0);
+  const entrada = Number(document.getElementById('editInstValorEntrada').value) || 0;
+  const total = entrada + somaParcelas;
+
   const el = document.getElementById('editInstTotalCalculado');
   if (el) el.textContent = formatMoney(total);
+
+  const subEl = document.getElementById('editInstSubtotalParcelas');
+  if (subEl) subEl.textContent = `Soma das ${editInstPlan.parcelas.length} parcelas: ${formatMoney(somaParcelas)}`;
 }
 
 function handleSaveEditInstallments(e) {
@@ -2826,87 +3189,82 @@ function handleSaveEditInstallments(e) {
   const car = appData.veiculos.find(v => Number(v.id) === carId);
   if (!car) return;
 
-  const newNum = Number(document.getElementById('editInstNumParcelas').value) || 0;
-  const newVal = Number(document.getElementById('editInstValorParcela').value) || 0;
+  if (!editInstPlan || !editInstPlan.parcelas || editInstPlan.parcelas.length === 0) {
+    showToast('Nenhuma parcela configurada.');
+    return;
+  }
+
+  const newNum = editInstPlan.parcelas.length;
   const newEntrada = Number(document.getElementById('editInstValorEntrada').value) || 0;
-  const baseDate = document.getElementById('editInstDataVencimento').value || new Date().toISOString().slice(0, 10);
   const modo = document.getElementById('editInstModo').value;
 
+  const somaParcelas = editInstPlan.parcelas.reduce((acc, p) => acc + (Number(p.valor) || 0), 0);
+  const primeiraPendente = editInstPlan.parcelas.find(p => p.status !== 'pago');
+  const valorReferencia = primeiraPendente ? primeiraPendente.valor : (editInstPlan.parcelas[0] ? editInstPlan.parcelas[0].valor : 0);
+
   car.numParcelas = newNum;
-  car.valorParcela = newVal;
+  car.valorParcela = valorReferencia;
   car.valorEntrada = newEntrada;
-  car.valorVenda = newEntrada + (newNum * newVal);
+  car.valorVenda = newEntrada + somaParcelas;
   car.lucro = car.valorVenda - (car.custoFinal || 0);
 
   let existing = appData.pagamentos.filter(p => Number(p.veiculoId) === carId);
-  existing.sort((a, b) => Number(a.numeroParcela) - Number(b.numeroParcela));
 
   if (modo === 'redefinir_tudo') {
-    // Remove todas as parcelas antigas e recria do zero
+    // Remove todas as parcelas antigas e recria do zero conforme o plano
     appData.pagamentos = appData.pagamentos.filter(p => Number(p.veiculoId) !== carId);
-    const startDate = new Date(baseDate);
-    for (let i = 1; i <= newNum; i++) {
-      const d = new Date(startDate);
-      d.setMonth(d.getMonth() + (i - 1));
-      const dStr = d.toISOString().slice(0, 10);
+    editInstPlan.parcelas.forEach((p, idx) => {
       appData.pagamentos.push({
-        id: Date.now() + i,
+        id: Date.now() + idx + Math.floor(Math.random() * 1000),
         veiculoId: carId,
-        numeroParcela: i,
-        dataVencimento: dStr,
+        numeroParcela: p.numeroParcela,
+        dataVencimento: p.dataVencimento,
         dataPagamento: '',
-        valor: newVal,
+        valor: p.valor,
         status: 'pendente',
-        mesRef: dStr.slice(0, 7)
+        mesRef: p.mesRef || (p.dataVencimento ? p.dataVencimento.slice(0, 7) : '')
       });
-    }
+    });
   } else if (modo === 'ajustar_pendentes') {
-    // Mantém as que já estão pagas
-    const pagas = existing.filter(p => p.status === 'pago');
-    const pagasCount = pagas.length;
-    const remainingCount = Math.max(0, newNum - pagasCount);
-
-    // Remove as pendentes antigas
+    // Mantém as pagas originais (ou atualiza valor se editada) e substitui as pendentes
     appData.pagamentos = appData.pagamentos.filter(p => !(Number(p.veiculoId) === carId && p.status !== 'pago'));
 
-    const startDate = new Date(baseDate);
-    for (let i = 1; i <= remainingCount; i++) {
-      const numParc = pagasCount + i;
-      const d = new Date(startDate);
-      d.setMonth(d.getMonth() + (i - 1));
-      const dStr = d.toISOString().slice(0, 10);
-      appData.pagamentos.push({
-        id: Date.now() + i + Math.floor(Math.random() * 1000),
-        veiculoId: carId,
-        numeroParcela: numParc,
-        dataVencimento: dStr,
-        dataPagamento: '',
-        valor: newVal,
-        status: 'pendente',
-        mesRef: dStr.slice(0, 7)
-      });
-    }
+    editInstPlan.parcelas.forEach(p => {
+      if (p.status === 'pago') {
+        const itemPaga = appData.pagamentos.find(x => Number(x.id) === Number(p.id));
+        if (itemPaga) itemPaga.valor = p.valor;
+      } else {
+        appData.pagamentos.push({
+          id: p.id || (Date.now() + p.numeroParcela + Math.floor(Math.random() * 1000)),
+          veiculoId: carId,
+          numeroParcela: p.numeroParcela,
+          dataVencimento: p.dataVencimento,
+          dataPagamento: '',
+          valor: p.valor,
+          status: 'pendente',
+          mesRef: p.mesRef || (p.dataVencimento ? p.dataVencimento.slice(0, 7) : '')
+        });
+      }
+    });
   } else if (modo === 'adicionar_ao_fim') {
-    // Adiciona novas parcelas preservando todas as existentes
-    const currentMax = existing.length > 0 ? Math.max(...existing.map(p => Number(p.numeroParcela) || 0)) : 0;
-    const toAdd = Math.max(0, newNum - currentMax);
-    const startDate = new Date(baseDate);
-    for (let i = 1; i <= toAdd; i++) {
-      const numParc = currentMax + i;
-      const d = new Date(startDate);
-      d.setMonth(d.getMonth() + (i - 1));
-      const dStr = d.toISOString().slice(0, 10);
-      appData.pagamentos.push({
-        id: Date.now() + i + Math.floor(Math.random() * 1000),
-        veiculoId: carId,
-        numeroParcela: numParc,
-        dataVencimento: dStr,
-        dataPagamento: '',
-        valor: newVal,
-        status: 'pendente',
-        mesRef: dStr.slice(0, 7)
-      });
-    }
+    // Atualiza as existentes com os novos valores e adiciona novas parcelas
+    editInstPlan.parcelas.forEach(p => {
+      const match = appData.pagamentos.find(x => Number(x.veiculoId) === carId && Number(x.numeroParcela) === p.numeroParcela);
+      if (match) {
+        match.valor = p.valor;
+      } else {
+        appData.pagamentos.push({
+          id: Date.now() + p.numeroParcela + Math.floor(Math.random() * 1000),
+          veiculoId: carId,
+          numeroParcela: p.numeroParcela,
+          dataVencimento: p.dataVencimento,
+          dataPagamento: '',
+          valor: p.valor,
+          status: 'pendente',
+          mesRef: p.mesRef || (p.dataVencimento ? p.dataVencimento.slice(0, 7) : '')
+        });
+      }
+    });
   }
 
   saveDatabase();
@@ -3079,7 +3437,7 @@ function onSettleTipoChange(tipo) {
   } else if (tipo === 'parcial_valor') {
     valInput.value = (car && car.valorParcela) ? car.valorParcela.toFixed(2) : '1000.00';
     if (nominalTag) nominalTag.textContent = `Saldo Aberto: ${formatMoney(openBalance)}`;
-    if (valHint) valHint.textContent = 'O valor informado será abatido das últimas parcelas para as primeiras (ordem decrescente).';
+    if (valHint) valHint.textContent = 'O valor amortizado será abatido das últimas parcelas para as primeiras (ordem decrescente), mantendo as parcelas próximas inalteradas.';
   }
 
   recalcSettleSummary();
@@ -3105,7 +3463,8 @@ function onSettleQtdChange() {
   const qtd = Math.max(1, Math.min(Number(qtdInput ? qtdInput.value : 1) || 1, pendentes.length || 1));
   if (qtdInput) qtdInput.value = qtd;
 
-  const sublist = pendentes.slice(0, qtd);
+  // Seleciona as ÚLTIMAS 'qtd' parcelas em aberto (de trás para frente)
+  const sublist = pendentes.slice(Math.max(0, pendentes.length - qtd));
   const totalSub = sublist.reduce((acc, p) => acc + (Number(p.valor) || 0), 0);
 
   const valInput = document.getElementById('settleValorPago');
@@ -3113,8 +3472,8 @@ function onSettleQtdChange() {
   const valHint = document.getElementById('settleValorPagoHint');
 
   if (valInput) valInput.value = totalSub.toFixed(2);
-  if (nominalTag) nominalTag.textContent = `Soma das ${qtd} parcelas: ${formatMoney(totalSub)}`;
-  if (valHint) valHint.textContent = `Serão quitadas as parcelas de vencimento mais próximo (${sublist.map(p => p.numeroParcela).join(', ')}).`;
+  if (nominalTag) nominalTag.textContent = `Soma das ${qtd} últimas parcelas: ${formatMoney(totalSub)}`;
+  if (valHint) valHint.textContent = `Serão quitadas as últimas parcelas em aberto (${sublist.map(p => 'Nº ' + p.numeroParcela).join(', ')}), mantendo as parcelas mais próximas inalteradas.`;
 
   recalcSettleSummary();
 }
@@ -3158,9 +3517,10 @@ function recalcSettleSummary() {
     novoSaldoRestante = Math.max(0, openBalance - (p ? p.valor : 0));
   } else if (tipo === 'parcial_parcelas') {
     const qtd = Math.min(Number(document.getElementById('settleQtdParcelas').value) || 1, pendentes.length);
-    const sublist = pendentes.slice(0, qtd);
+    // Seleciona as ÚLTIMAS 'qtd' parcelas em aberto
+    const sublist = pendentes.slice(Math.max(0, pendentes.length - qtd));
     nominalComparativo = sublist.reduce((acc, p) => acc + (Number(p.valor) || 0), 0);
-    descricaoAcao = `Quitação de ${qtd} parcela(s) consecutiva(s) (${sublist.map(p => `Nº ${p.numeroParcela}`).join(', ')}).`;
+    descricaoAcao = `Quitação de ${qtd} última(s) parcela(s) em aberto (${sublist.map(p => `Nº ${p.numeroParcela}`).join(', ')}), mantendo as parcelas mais próximas inalteradas.`;
     novoSaldoRestante = Math.max(0, openBalance - nominalComparativo);
   } else if (tipo === 'parcial_valor') {
     nominalComparativo = valPago;
@@ -3174,13 +3534,13 @@ function recalcSettleSummary() {
         quitadasSim.push(p.numeroParcela);
         restanteSim -= Number(p.valor);
       } else {
-        parcialSim = p.numeroParcela;
+        parcialSim = { num: p.numeroParcela, abatido: restanteSim, novo: +(p.valor - restanteSim).toFixed(2) };
         restanteSim = 0;
       }
     }
-    descricaoAcao = `Amortização de ${formatMoney(valPago)} abatendo das últimas parcelas para as primeiras` +
+    descricaoAcao = `Amortização de ${formatMoney(valPago)} abatendo das últimas parcelas para as primeiras (parcelas próximas mantidas inalteradas)` +
       (quitadasSim.length ? ` • Quitadas: Nº ${quitadasSim.join(', ')}` : '') +
-      (parcialSim !== null ? ` • Abatimento parcial na Nº ${parcialSim}` : '') + '.';
+      (parcialSim !== null ? ` • Abatimento parcial na Nº ${parcialSim.num} (novo valor: ${formatMoney(parcialSim.novo)})` : '') + '.';
     novoSaldoRestante = Math.max(0, openBalance - valPago);
   }
 
@@ -3258,20 +3618,22 @@ function handleSaveSettlement(e) {
     showToast(`Quitação total confirmada! Todas as parcelas foram liquidadas por ${formatMoney(valPago)}.`);
   } else if (tipo === 'parcial_parcelas') {
     const qtd = Math.min(Number(document.getElementById('settleQtdParcelas').value) || 1, pendentes.length);
-    const sublist = pendentes.slice(0, qtd);
+    // Seleciona as ÚLTIMAS 'qtd' parcelas em aberto (de trás para frente)
+    const sublist = pendentes.slice(Math.max(0, pendentes.length - qtd));
     const avgPerParc = valPago / qtd;
     sublist.forEach(p => {
       p.status = 'pago';
       p.dataPagamento = dataPag;
       p.valorPago = Number(avgPerParc.toFixed(2));
       p.formaPagamento = formaPag;
-      p.observacao = `Quitação parcial (${formaPag}). Valor: ${formatMoney(valPago)}.${obs ? ` Obs: ${obs}` : ''}`;
+      p.observacao = `Quitação antecipada de parcelas finais (${formaPag}). Valor: ${formatMoney(valPago)}.${obs ? ` Obs: ${obs}` : ''}`;
     });
-    showToast(`${qtd} parcela(s) baixada(s) com sucesso na quitação parcial!`);
+    showToast(`${qtd} última(s) parcela(s) (${sublist.map(p => `Nº ${p.numeroParcela}`).join(', ')}) quitada(s) com sucesso! Parcelas próximas mantidas.`);
   } else if (tipo === 'parcial_valor') {
     // Abate em ordem decrescente: da última parcela em aberto para a primeira
     let restante = valPago;
-    let baixadas = 0;
+    let baixadas = [];
+    let amortizadaParcial = null;
     for (let i = pendentes.length - 1; i >= 0; i--) {
       const p = pendentes[i];
       if (restante >= p.valor) {
@@ -3279,17 +3641,22 @@ function handleSaveSettlement(e) {
         p.dataPagamento = dataPag;
         p.valorPago = p.valor;
         p.formaPagamento = formaPag;
-        p.observacao = `Amortização de parcela via ${formaPag}.${obs ? ` Obs: ${obs}` : ''}`;
+        p.observacao = `Amortização antecipada via ${formaPag}.${obs ? ` Obs: ${obs}` : ''}`;
         restante -= p.valor;
-        baixadas++;
+        baixadas.push(p.numeroParcela);
       } else if (restante > 0) {
-        p.valor = p.valor - restante;
+        p.valor = +(p.valor - restante).toFixed(2);
         p.observacao = `Amortizado ${formatMoney(restante)} nesta parcela via ${formaPag}.${obs ? ` Obs: ${obs}` : ''}`;
+        amortizadaParcial = { num: p.numeroParcela, valorAmortizado: restante, novoValor: p.valor };
         restante = 0;
         break;
       }
     }
-    showToast(`Amortização de ${formatMoney(valPago)} registrada com sucesso (${baixadas} parcela(s) quitada(s))!`);
+    let msg = `Amortização de ${formatMoney(valPago)} registrada com sucesso!`;
+    if (baixadas.length > 0) msg += ` ${baixadas.length} última(s) parcela(s) quitada(s) (Nº ${baixadas.join(', ')}).`;
+    if (amortizadaParcial) msg += ` Parcela Nº ${amortizadaParcial.num} abatida para ${formatMoney(amortizadaParcial.novoValor)}.`;
+    msg += ` As parcelas mais próximas foram preservadas.`;
+    showToast(msg);
   }
 
   saveDatabase();
@@ -3308,13 +3675,53 @@ function openModalRegisterPayment() {
   openModalSettlement();
 }
 
-// Busca Global
+// Busca Global e Filtro Unificado
 function handleGlobalSearch(term) {
-  if (document.getElementById('viewInventory').style.display !== 'none') {
+  const clearBtn = document.getElementById('globalSearchClearBtn');
+  if (clearBtn) {
+    clearBtn.style.display = term && term.trim().length > 0 ? 'inline-block' : 'none';
+  }
+
+  const isInventory = document.getElementById('viewInventory') && document.getElementById('viewInventory').style.display !== 'none';
+  const isExpenses = document.getElementById('viewExpenses') && document.getElementById('viewExpenses').style.display !== 'none';
+  const isDocuments = document.getElementById('viewDocuments') && document.getElementById('viewDocuments').style.display !== 'none';
+  const isPayments = document.getElementById('viewPayments') && document.getElementById('viewPayments').style.display !== 'none';
+
+  if (isInventory) {
     renderInventory();
-  } else if (document.getElementById('viewDashboard').style.display !== 'none') {
-    // Se digitou no dashboard, migra para a lista de estoque filtrada
-    if (term.length > 2) {
+  } else if (isExpenses) {
+    renderExpensesTable();
+  } else if (isDocuments) {
+    renderDocumentsGrid();
+  } else if (isPayments) {
+    renderPaymentsMatrix();
+    renderActiveFinancings();
+  } else {
+    // Se estiver em outra tela (Dashboard, Detalhes, etc.), ao digitar qualquer caractere migra para o Estoque com a busca ativa
+    if (term && term.trim().length > 0) {
+      switchView('inventory');
+    }
+  }
+}
+
+function clearGlobalSearch() {
+  const input = document.getElementById('globalSearchInput');
+  if (input) {
+    input.value = '';
+    handleGlobalSearch('');
+    input.focus();
+  }
+}
+
+function handleSearchKeyDown(e) {
+  if (e.key === 'Escape') {
+    clearGlobalSearch();
+  } else if (e.key === 'Enter') {
+    const isInventory = document.getElementById('viewInventory') && document.getElementById('viewInventory').style.display !== 'none';
+    const isExpenses = document.getElementById('viewExpenses') && document.getElementById('viewExpenses').style.display !== 'none';
+    const isDocuments = document.getElementById('viewDocuments') && document.getElementById('viewDocuments').style.display !== 'none';
+    const isPayments = document.getElementById('viewPayments') && document.getElementById('viewPayments').style.display !== 'none';
+    if (!isInventory && !isExpenses && !isDocuments && !isPayments) {
       switchView('inventory');
     }
   }
