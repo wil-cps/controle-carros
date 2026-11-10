@@ -1,3 +1,9 @@
 node_modules/
 # Banco SQLite com os dados reais e senhas (nunca versionar)
 dados/
+
+# Cloudflare / migracao
+.wrangler/
+migracao/
+backups/
+.dev.vars

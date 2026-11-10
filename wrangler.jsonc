@@ -1,0 +1,49 @@
+// Configuração do AutoManage Toledo na Cloudflare (Workers + D1 + KV)
+// Passo a passo de publicação no README.md
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "controle-carros",
+  "main": "worker/index.js",
+  "compatibility_date": "2026-10-01",
+
+  // Telas do sistema. Só a pasta public/ é publicada; /api/* vai para o Worker.
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"]
+  },
+
+  // Banco SQL. Troque o database_id pelo valor mostrado em: npx wrangler d1 create controle-carros
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "controle-carros",
+      "database_id": "1f07e6d0-223b-4e73-9507-f94787e48d45",
+      "migrations_dir": "migrations"
+    }
+  ],
+
+  // Fotos e documentos anexados. Troque o id pelo valor mostrado em: npx wrangler kv namespace create ARQUIVOS
+  "kv_namespaces": [
+    {
+      "binding": "ARQUIVOS",
+      "id": "fd8af4bdae354100beb06274ae2e28d6"
+    }
+  ],
+
+  // Limpeza diária de sessões expiradas (03:00 no horário de Brasília)
+  "triggers": {
+    "crons": ["0 6 * * *"]
+  },
+
+  "observability": {
+    "enabled": true
+  }
+
+  // Domínio próprio: depois que toledocarros.com.br estiver ativo na sua conta Cloudflare,
+  // apague as duas barras das linhas abaixo (e coloque uma vírgula depois do bloco "observability").
+  // "routes": [
+  //   { "pattern": "toledocarros.com.br", "custom_domain": true },
+  //   { "pattern": "www.toledocarros.com.br", "custom_domain": true }
+  // ]
+}

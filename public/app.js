@@ -78,14 +78,42 @@ function requireFullAccess() {
 // ============================================================================
 // REPOSITÓRIO DIGITAL DE ARQUIVOS E FOTOS (ARMAZENADO NO SERVIDOR)
 // ============================================================================
+// O conteúdo (data URL em base64) vai no corpo da requisição e as demais informações
+// no cabeçalho X-Arquivo-Meta. Limite do armazenamento: 25 MB em base64 (~18 MB de arquivo).
+const MAX_ARQUIVO_BASE64 = 25 * 1024 * 1024 - 1024;
+
 const AppFileRepo = {
   async init() {
     return true;
   },
 
   async salvar(id, fileData) {
+    const { dataBase64, ...meta } = fileData || {};
+    const conteudo = String(dataBase64 || '');
+    if (!conteudo) {
+      showToast('Arquivo vazio.');
+      return false;
+    }
+    if (conteudo.length > MAX_ARQUIVO_BASE64) {
+      alert('Arquivo muito grande. O limite é de aproximadamente 18 MB por arquivo.');
+      return false;
+    }
     try {
-      await apiFetch(`/api/arquivos/${Number(id)}`, { method: 'PUT', body: JSON.stringify(fileData) });
+      const res = await fetch(`/api/arquivos/${Number(id)}`, {
+        method: 'PUT',
+        credentials: 'same-origin',
+        headers: {
+          'Content-Type': 'text/plain; charset=utf-8',
+          'X-Arquivo-Meta': encodeURIComponent(JSON.stringify(meta))
+        },
+        body: conteudo
+      });
+      if (!res.ok) {
+        let corpo = null;
+        try { corpo = await res.json(); } catch (e) { corpo = null; }
+        if (res.status === 401) handleSessionExpired();
+        throw new Error((corpo && corpo.erro) || `Erro ${res.status} ao enviar o arquivo.`);
+      }
       return true;
     } catch (err) {
       console.error('Erro ao enviar arquivo:', err);
@@ -96,7 +124,13 @@ const AppFileRepo = {
 
   async obter(id) {
     try {
-      return await apiFetch(`/api/arquivos/${Number(id)}`);
+      const res = await fetch(`/api/arquivos/${Number(id)}`, { credentials: 'same-origin' });
+      if (!res.ok) {
+        if (res.status === 401) handleSessionExpired();
+        return null;
+      }
+      const meta = JSON.parse(decodeURIComponent(res.headers.get('X-Arquivo-Meta') || '%7B%7D'));
+      return { ...meta, dataBase64: await res.text() };
     } catch (err) {
       return null;
     }
