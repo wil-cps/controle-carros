@@ -1533,19 +1533,17 @@ function ensureInstallmentsForCar(car) {
         const mm = String(dueDate.getMonth() + 1).padStart(2, '0');
         const dd = String(Math.min(saleDate.getDate() || 25, 28)).padStart(2, '0');
         const dueDateStr = `${yyyy}-${mm}-${dd}`;
-        const isPaidDefault = (car.id === 1 && i === 1); // Toro parcela 1 já paga na base original
-
         appData.pagamentos.push({
           id: Date.now() + Math.floor(Math.random() * 100000) + i,
           veiculoId: car.id,
           numeroParcela: i,
           dataVencimento: dueDateStr,
-          dataPagamento: isPaidDefault ? dueDateStr : '',
+          dataPagamento: '',
           valor: valParc,
-          valorPago: isPaidDefault ? valParc : null,
-          status: isPaidDefault ? 'pago' : 'pendente',
+          valorPago: null,
+          status: 'pendente',
           mesRef: `${yyyy}-${mm}`,
-          observacao: isPaidDefault ? 'Pago na entrada/Setembro' : ''
+          observacao: ''
         });
       }
     }
@@ -1669,6 +1667,39 @@ function togglePayInstallment(paymentId) {
 // ============================================================================
 // DESPESAS VIEW (EXPENSES)
 // ============================================================================
+function setTextById(id, texto) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = texto;
+}
+
+// Maior gasto e carro com mais despesas, calculados sobre as despesas listadas
+function renderExpenseKpis(list) {
+  const maior = list.reduce((max, d) => (Number(d.valor) || 0) > (Number(max && max.valor) || 0) ? d : max, null);
+  setTextById('expKpiMax', formatMoney(maior ? maior.valor : 0));
+  setTextById('expKpiMaxInfo', maior ? (maior.item || maior.categoria || '-') : 'Nenhuma despesa');
+
+  const porCarro = new Map();
+  list.forEach(d => {
+    const atual = porCarro.get(Number(d.veiculoId)) || { total: 0, itens: 0 };
+    atual.total += Number(d.valor) || 0;
+    atual.itens += 1;
+    porCarro.set(Number(d.veiculoId), atual);
+  });
+  let topId = null;
+  porCarro.forEach((info, id) => {
+    if (topId === null || info.total > porCarro.get(topId).total) topId = id;
+  });
+  if (topId === null) {
+    setTextById('expKpiTopCar', '-');
+    setTextById('expKpiTopCarInfo', 'Nenhuma despesa');
+    return;
+  }
+  const car = appData.veiculos.find(v => Number(v.id) === topId);
+  const info = porCarro.get(topId);
+  setTextById('expKpiTopCar', car ? `${car.marca} ${car.modelo}` : `Veículo #${topId}`);
+  setTextById('expKpiTopCarInfo', `${formatMoney(info.total)} em ${info.itens} ${info.itens === 1 ? 'item' : 'itens'}`);
+}
+
 function renderExpensesTable() {
   const vehFilter = document.getElementById('filterExpenseVehicle') ? document.getElementById('filterExpenseVehicle').value : 'todos';
   const catFilter = document.getElementById('filterExpenseCategory') ? document.getElementById('filterExpenseCategory').value : 'todas';
@@ -1707,6 +1738,7 @@ function renderExpensesTable() {
   const total = list.reduce((acc, d) => acc + (Number(d.valor) || 0), 0);
   const expKpiTotal = document.getElementById('expKpiTotal');
   if (expKpiTotal) expKpiTotal.textContent = formatMoney(total);
+  renderExpenseKpis(list);
 
   const tbody = document.getElementById('expensesTableBody');
   if (!tbody) return;
@@ -2094,7 +2126,33 @@ function setPaymentsYear(year) {
   renderPaymentsMatrix();
 }
 
+// Resumo da aba Pagamentos, calculado a partir dos dados carregados
+function renderPaymentsKpis() {
+  const comEntrada = appData.veiculos.filter(v => v.status === 'Vendido' && (Number(v.valorEntrada) || 0) > 0);
+  const totalEntradas = comEntrada.reduce((acc, v) => acc + (Number(v.valorEntrada) || 0), 0);
+  setTextById('kpiEntradasTotal', formatMoney(totalEntradas));
+  setTextById('kpiEntradasInfo', `${comEntrada.length} ${comEntrada.length === 1 ? 'carro vendido' : 'carros vendidos'} com entrada`);
+
+  const abertas = appData.pagamentos.filter(p => p.status !== 'pago');
+  const totalAberto = abertas.reduce((acc, p) => acc + (Number(p.valor) || 0), 0);
+  setTextById('kpiParcelasAberto', `${abertas.length} ${abertas.length === 1 ? 'parcela' : 'parcelas'}`);
+  setTextById('kpiParcelasInfo', `Total a receber: ${formatMoney(totalAberto)}`);
+
+  // Próxima parcela em aberto de cada carnê ativo
+  const proximaPorCarro = new Map();
+  abertas.forEach(p => {
+    const atual = proximaPorCarro.get(Number(p.veiculoId));
+    if (!atual || Number(p.numeroParcela) < Number(atual.numeroParcela)) proximaPorCarro.set(Number(p.veiculoId), p);
+  });
+  const mensal = [...proximaPorCarro.values()].reduce((acc, p) => acc + (Number(p.valor) || 0), 0);
+  setTextById('kpiValorMensalFluxo', `${formatMoney(mensal)} / mês`);
+  setTextById('kpiValorMensalInfo', proximaPorCarro.size
+    ? `${proximaPorCarro.size} ${proximaPorCarro.size === 1 ? 'carnê ativo' : 'carnês ativos'}`
+    : 'Nenhum carnê ativo');
+}
+
 function renderPaymentsMatrix() {
+  renderPaymentsKpis();
   const tbody = document.getElementById('paymentsMatrixBody');
   if (!tbody) return;
 
@@ -2116,12 +2174,7 @@ function renderPaymentsMatrix() {
           cellsHtml += `<td style="color: var(--warning); font-weight: 600;" title="A vencer">Parc. ${pagamento.numeroParcela}</td>`;
         }
       } else {
-        // Exemplo especial da Toro no Excel Toledo (Setembro 2026 = 1/43)
-        if (v.id === 1 && currentPaymentsYear === 2026 && m === '09') {
-          cellsHtml += `<td class="paid-cell">1/43</td>`;
-        } else {
-          cellsHtml += `<td style="color: var(--text-dim);">-</td>`;
-        }
+        cellsHtml += `<td style="color: var(--text-dim);">-</td>`;
       }
     });
 
