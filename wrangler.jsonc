@@ -38,12 +38,11 @@
 
   "observability": {
     "enabled": true
-  }
+  },
 
-  // Domínio próprio: depois que toledocarros.com.br estiver ativo na sua conta Cloudflare,
-  // apague as duas barras das linhas abaixo (e coloque uma vírgula depois do bloco "observability").
-  // "routes": [
-  //   { "pattern": "toledocarros.com.br", "custom_domain": true },
-  //   { "pattern": "www.toledocarros.com.br", "custom_domain": true }
-  // ]
+  // Domínio próprio (zona toledocarros.com.br ativa na conta Cloudflare)
+  "routes": [
+    { "pattern": "toledocarros.com.br", "custom_domain": true },
+    { "pattern": "www.toledocarros.com.br", "custom_domain": true }
+  ]
 }
