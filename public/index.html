@@ -1327,8 +1327,9 @@
 
           <!-- PAINEL 1: UPLOAD DE ARQUIVO (DROPZONE) -->
           <div id="panelDocUpload" class="repo-tab-panel">
-            <div class="repo-dropzone" id="docDropzone" onclick="document.getElementById('docFileInput').click()">
-              <input type="file" id="docFileInput" accept="image/*,application/pdf,.doc,.docx,.xlsx,.txt" style="display: none;" onchange="handleDocFileSelected(event)">
+            <!-- O input fica fora da área clicável e é aberto pelo label (mais confiável em celulares) -->
+            <input type="file" id="docFileInput" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.odt,.ods,.csv,.txt" style="display: none;" onchange="handleDocFileSelected(event)">
+            <label class="repo-dropzone" id="docDropzone" for="docFileInput" style="display: block; cursor: pointer;">
               <div class="repo-dropzone-icon">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
               </div>
@@ -1336,7 +1337,7 @@
               <span style="font-size: 0.78rem; color: var(--text-dim); margin-top: 4px; display: block;">
                 Suporta PDFs, Fotos (JPG, PNG), Laudos e Documentos
               </span>
-            </div>
+            </label>
 
             <!-- Preview do arquivo selecionado -->
             <div class="repo-file-preview-card" id="docUploadPreviewCard" style="display: none;">
@@ -1492,7 +1493,7 @@
           <!-- BLOCO DE EDIÇÃO INDIVIDUAL DA PARCELA -->
           <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 14px; margin-bottom: 16px;">
             <div style="font-weight: 700; font-size: 0.92rem; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between;">
-              <span>📝 Selecionar Parcela para Ajustar Valor</span>
+              <span>📝 Selecionar Parcela para Ajustar Valor e Vencimento</span>
               <span id="editInstParcelasBadge" class="status-pill upcoming" style="font-size: 0.75rem;">0 parcelas</span>
             </div>
             <div class="form-grid-2">
@@ -1512,6 +1513,10 @@
                 </div>
               </div>
             </div>
+            <div class="form-group" style="margin: 12px 0 0;">
+              <label for="editInstVencIndividual">Vencimento da Parcela Selecionada</label>
+              <input type="date" id="editInstVencIndividual" class="input-control" onchange="onEditInstVencIndividualChange()">
+            </div>
             <div id="editInstParcelaNotice" style="font-size: 0.8rem; color: var(--text-muted); margin-top: 8px;">
               💡 Ao editar o valor desta parcela, você poderá escolher se deseja atualizar o valor das demais parcelas também.
             </div>
@@ -1524,7 +1529,8 @@
             </div>
             <div class="form-group">
               <label for="editInstDataVencimento">Data Base / 1º Vencimento</label>
-              <input type="date" id="editInstDataVencimento" class="input-control">
+              <input type="date" id="editInstDataVencimento" class="input-control" onchange="onEditInstDataBaseChange()">
+              <small style="font-size: 0.75rem; color: var(--text-dim);">Ao mudar, as parcelas pendentes passam a vencer todo mês a partir desta data.</small>
             </div>
           </div>
 
