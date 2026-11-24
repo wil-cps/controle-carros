@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AutoManage Toledo - Gestão e Controle de Compra e Venda de Carros</title>
   <meta name="description" content="Sistema completo de controle de compra e venda de veículos, estoque, despesas, documentos e pagamentos parcelados para revenda automotiva.">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <meta name="theme-color" content="#2563eb">
   <link rel="stylesheet" href="styles.css">
   <!-- Chart.js para gráficos interativos -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -80,7 +82,7 @@
             Sincronizado
           </div>
           <div class="promo-card-desc">
-            Base conectada com a planilha <strong>Toledo_v2</strong>. Dados salvos no servidor.
+            Dados salvos no servidor.
           </div>
         </div>
       </div>
@@ -94,7 +96,8 @@
       <header class="topbar">
         <div class="topbar-search-box">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-          <input type="text" id="globalSearchInput" placeholder="Buscar por modelo, placa, comprador..." oninput="handleGlobalSearch(this.value)">
+          <input type="text" id="globalSearchInput" placeholder="Buscar por modelo, placa, ano, comprador..." oninput="handleGlobalSearch(this.value)" onkeydown="handleSearchKeyDown(event)">
+          <button type="button" id="globalSearchClearBtn" class="search-clear-btn" onclick="clearGlobalSearch()" title="Limpar busca" style="display: none; background: transparent; border: none; cursor: pointer; color: var(--text-dim); padding: 0 4px; font-size: 1.15rem; line-height: 1;">&times;</button>
         </div>
 
         <div class="topbar-actions">
@@ -203,8 +206,26 @@
               <input type="date" id="dashDateTo" class="input-control" onchange="onDashboardCustomRange()">
             </label>
           </div>
+          <div class="filter-group">
+            <label class="dash-period-date" style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-weight: 600;">Sociedade:</span>
+              <select id="dashFilterSociedade" class="select-control" onchange="renderDashboard()" style="min-width: 170px; padding: 6px 10px;">
+                <option value="todos">Todos os Sócios</option>
+              </select>
+            </label>
+          </div>
         </div>
 
+        <!-- SUB-ABAS DE DETALHAMENTO DO DASHBOARD -->
+        <div class="dash-tabs-container">
+          <button type="button" class="dash-tab-btn active" id="dashTabGeral" onclick="switchDashboardTab('geral')">📊 Visão Geral & KPIs</button>
+          <button type="button" class="dash-tab-btn" id="dashTabDespesas" onclick="switchDashboardTab('despesas')">🔧 Despesas & Aquisições</button>
+          <button type="button" class="dash-tab-btn" id="dashTabVendas" onclick="switchDashboardTab('vendas')">🤝 Vendas & Financiamentos</button>
+          <button type="button" class="dash-tab-btn" id="dashTabLucro" onclick="switchDashboardTab('lucro')">📈 Lucro por Classificação</button>
+        </div>
+
+        <!-- ABA 1: VISÃO GERAL -->
+        <div id="dashSectionGeral" class="dash-section">
         <!-- 4 KPIS EM CARDS (Inspirado no AutoManage 21.29.26 (1)) -->
         <div class="kpi-grid">
           <div class="kpi-card">
@@ -214,7 +235,7 @@
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
               </div>
             </div>
-            <div class="kpi-value" id="kpiEstoqueValor">R$ 104.974</div>
+            <div class="kpi-value" id="kpiEstoqueValor">R$ 0</div>
             <div>
               <span class="kpi-footer-badge badge-neutral" id="kpiEstoqueCount">4 veículos disponíveis</span>
             </div>
@@ -227,7 +248,7 @@
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
               </div>
             </div>
-            <div class="kpi-value" id="kpiLucroTotal">R$ 156.213</div>
+            <div class="kpi-value" id="kpiLucroTotal">R$ 0</div>
             <div>
               <span class="kpi-footer-badge badge-positive" id="kpiLucroBadge">+92% rentabilidade média</span>
             </div>
@@ -240,9 +261,9 @@
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
               </div>
             </div>
-            <div class="kpi-value" id="kpiCarrosVendidos">4</div>
+            <div class="kpi-value" id="kpiCarrosVendidos">0</div>
             <div>
-              <span class="kpi-footer-badge badge-positive" id="kpiVendaTotalValor">R$ 317.500 em vendas</span>
+              <span class="kpi-footer-badge badge-positive" id="kpiVendaTotalValor">R$ 0 em vendas</span>
             </div>
           </div>
 
@@ -253,7 +274,7 @@
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" x2="12" y1="1" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
               </div>
             </div>
-            <div class="kpi-value" id="kpiDespesasTotal">R$ 24.061</div>
+            <div class="kpi-value" id="kpiDespesasTotal">R$ 0</div>
             <div>
               <span class="kpi-footer-badge badge-neutral" id="kpiDespesasCount">32 lançamentos</span>
             </div>
@@ -309,6 +330,339 @@
           <button class="btn btn-secondary btn-sm" onclick="switchView('inventory')">Ver Todos os Veículos &rarr;</button>
         </div>
         <div class="vehicles-grid" id="dashboardVehiclesGrid"></div>
+        </div><!-- FIM dashSectionGeral -->
+
+        <!-- ABA 2: VISÃO DE DESPESAS & AQUISIÇÕES -->
+        <div id="dashSectionDespesas" class="dash-section" style="display: none;">
+          <div class="kpi-grid">
+            <div class="kpi-card">
+              <div class="kpi-card-header">
+                <span class="kpi-label">Gastos com Aquisições</span>
+                <div class="kpi-icon-pill blue">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.5 2.8C2.1 11 2 11.5 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg>
+                </div>
+              </div>
+              <div class="kpi-value" id="dashKpiAquisicaoValor">R$ 0</div>
+              <div>
+                <span class="kpi-footer-badge badge-neutral" id="dashKpiAquisicaoCount">0 veículos adquiridos</span>
+              </div>
+            </div>
+
+            <div class="kpi-card">
+              <div class="kpi-card-header">
+                <span class="kpi-label">Gastos com Manutenções</span>
+                <div class="kpi-icon-pill amber">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+                </div>
+              </div>
+              <div class="kpi-value" id="dashKpiManutencaoValor">R$ 0</div>
+              <div>
+                <span class="kpi-footer-badge badge-neutral" id="dashKpiManutencaoCount">0 lançamentos</span>
+              </div>
+            </div>
+
+            <div class="kpi-card">
+              <div class="kpi-card-header">
+                <span class="kpi-label">Investimento Total (Compra + Manutenção)</span>
+                <div class="kpi-icon-pill purple">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 18V6"/></svg>
+                </div>
+              </div>
+              <div class="kpi-value" id="dashKpiInvestimentoTotal">R$ 0</div>
+              <div>
+                <span class="kpi-footer-badge badge-positive">Filtrado por prazo e sociedade</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 2 COLUNAS: MANUTENÇÃO POR CATEGORIA & AQUISIÇÕES DE VEÍCULOS -->
+          <div style="display: grid; grid-template-columns: 1fr 1.2fr; gap: 24px; margin-bottom: 32px;">
+            <div class="kpi-card" style="padding: 24px;">
+              <div class="page-header" style="margin-bottom: 16px;">
+                <div>
+                  <h3 style="font-size: 1.15rem; font-weight: 700;">Gastos por Tipo de Manutenção</h3>
+                  <p class="page-header-subtitle">Detalhamento por categoria das despesas</p>
+                </div>
+              </div>
+              <div style="position: relative; height: 180px; width: 100%; margin-bottom: 16px;">
+                <canvas id="chartDashManutencaoCat"></canvas>
+              </div>
+              <div style="overflow-x: auto;">
+                <table class="dash-detail-table">
+                  <thead>
+                    <tr>
+                      <th>Tipo / Categoria</th>
+                      <th style="text-align: center;">Qtd</th>
+                      <th style="text-align: right;">Total Gasto</th>
+                      <th style="text-align: right;">% Despesas</th>
+                    </tr>
+                  </thead>
+                  <tbody id="dashManutencaoTableBody">
+                    <tr><td colspan="4" style="text-align: center; color: var(--text-dim);">Nenhum lançamento no período</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="kpi-card" style="padding: 24px;">
+              <div class="page-header" style="margin-bottom: 16px;">
+                <div>
+                  <h3 style="font-size: 1.15rem; font-weight: 700;">Gastos com Aquisição de Veículos</h3>
+                  <p class="page-header-subtitle">Veículos comprados no período selecionado</p>
+                </div>
+              </div>
+              <div style="overflow-x: auto; max-height: 480px;">
+                <table class="dash-detail-table">
+                  <thead>
+                    <tr>
+                      <th>Veículo</th>
+                      <th>Data Compra</th>
+                      <th>Sociedade</th>
+                      <th style="text-align: right;">Compra</th>
+                      <th style="text-align: right;">Despesas</th>
+                      <th style="text-align: right;">Custo Final</th>
+                      <th style="text-align: center;">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody id="dashAquisicaoTableBody">
+                    <tr><td colspan="7" style="text-align: center; color: var(--text-dim);">Nenhum veículo adquirido no período</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div><!-- FIM dashSectionDespesas -->
+
+        <!-- ABA 3: VISÃO DE VENDAS & FINANCIAMENTOS -->
+        <div id="dashSectionVendas" class="dash-section" style="display: none;">
+          <div class="kpi-grid">
+            <div class="kpi-card">
+              <div class="kpi-card-header">
+                <span class="kpi-label">Vendas Totais</span>
+                <div class="kpi-icon-pill green">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+                </div>
+              </div>
+              <div class="kpi-value" id="dashKpiVendasTotal">R$ 0</div>
+              <div>
+                <span class="kpi-footer-badge badge-neutral" id="dashKpiVendasCount">0 vendas realizadas</span>
+              </div>
+            </div>
+
+            <div class="kpi-card">
+              <div class="kpi-card-header">
+                <span class="kpi-label">Total em Entradas</span>
+                <div class="kpi-icon-pill blue">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 14 14"/></svg>
+                </div>
+              </div>
+              <div class="kpi-value" id="dashKpiEntradasTotal">R$ 0</div>
+              <div>
+                <span class="kpi-footer-badge badge-positive" id="dashKpiEntradasRatio">Valor recebido no ato</span>
+              </div>
+            </div>
+
+            <div class="kpi-card">
+              <div class="kpi-card-header">
+                <span class="kpi-label">Parcelas Pagas (Financiamentos)</span>
+                <div class="kpi-icon-pill purple">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                </div>
+              </div>
+              <div class="kpi-value" id="dashKpiParcelasPagasTotal">R$ 0</div>
+              <div>
+                <span class="kpi-footer-badge badge-positive" id="dashKpiParcelasPagasCount">0 parcelas quitadas</span>
+              </div>
+            </div>
+
+            <div class="kpi-card">
+              <div class="kpi-card-header">
+                <span class="kpi-label">Saldo a Receber</span>
+                <div class="kpi-icon-pill amber">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
+                </div>
+              </div>
+              <div class="kpi-value" id="dashKpiSaldoReceberTotal">R$ 0</div>
+              <div>
+                <span class="kpi-footer-badge badge-warning" id="dashKpiSaldoReceberCount">Parcelas vincendas/abertas</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- TABELA DE CARROS FINANCIADOS E EVOLUÇÃO -->
+          <div class="kpi-card" style="padding: 24px; margin-bottom: 32px;">
+            <div class="page-header" style="margin-bottom: 16px;">
+              <div>
+                <h3 style="font-size: 1.15rem; font-weight: 700;">Carros Financiados e Evolução dos Pagamentos</h3>
+                <p class="page-header-subtitle">Acompanhamento de entradas, parcelas pagas, saldo restante e taxa de quitação</p>
+              </div>
+            </div>
+            <div style="overflow-x: auto;">
+              <table class="dash-detail-table">
+                <thead>
+                  <tr>
+                    <th>Veículo</th>
+                    <th>Comprador</th>
+                    <th style="text-align: right;">Valor Venda</th>
+                    <th style="text-align: right;">Entrada</th>
+                    <th style="text-align: center;">Parcelamento</th>
+                    <th style="text-align: right;">Total Recebido</th>
+                    <th style="text-align: right;">Saldo Restante</th>
+                    <th style="min-width: 170px;">Evolução</th>
+                    <th style="text-align: center;">Status</th>
+                    <th style="text-align: center;">Carnê</th>
+                  </tr>
+                </thead>
+                <tbody id="dashFinanciamentosTableBody">
+                  <tr><td colspan="10" style="text-align: center; color: var(--text-dim);">Nenhum veículo financiado encontrado para o filtro</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div><!-- FIM dashSectionVendas -->
+
+        <!-- ABA 4: VISÃO DE LUCRO DAS VENDAS POR CLASSIFICAÇÃO -->
+        <div id="dashSectionLucro" class="dash-section" style="display: none;">
+          <div class="kpi-grid">
+            <div class="kpi-card">
+              <div class="kpi-card-header">
+                <span class="kpi-label">Lucro Total Realizado</span>
+                <div class="kpi-icon-pill green">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+                </div>
+              </div>
+              <div class="kpi-value" id="dashKpiLucroConsolidado">R$ 0</div>
+              <div>
+                <span class="kpi-footer-badge badge-positive" id="dashKpiLucroConsolidadoCount">0 vendas consideradas</span>
+              </div>
+            </div>
+
+            <div class="kpi-card">
+              <div class="kpi-card-header">
+                <span class="kpi-label">Margem Média de Lucro</span>
+                <div class="kpi-icon-pill blue">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m16 12-4-4-4 4"/><path d="M12 16V8"/></svg>
+                </div>
+              </div>
+              <div class="kpi-value" id="dashKpiMargemConsolidada">0%</div>
+              <div>
+                <span class="kpi-footer-badge badge-neutral">Lucro / Custo Final</span>
+              </div>
+            </div>
+
+            <div class="kpi-card">
+              <div class="kpi-card-header">
+                <span class="kpi-label">Carro com Maior Lucro</span>
+                <div class="kpi-icon-pill purple">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                </div>
+              </div>
+              <div class="kpi-value" id="dashKpiCarroTopLucro" style="font-size: 1.15rem; line-height: 1.3;">-</div>
+              <div>
+                <span class="kpi-footer-badge badge-positive" id="dashKpiCarroTopLucroVal">R$ 0</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- GRID 2x2 DE QUEBRAS DE CLASSIFICAÇÃO -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px;">
+            <!-- 1. Por Modalidade -->
+            <div class="kpi-card" style="padding: 24px;">
+              <h3 style="font-size: 1.05rem; font-weight: 700; margin-bottom: 12px;">Lucro por Modalidade de Pagamento</h3>
+              <table class="dash-detail-table">
+                <thead>
+                  <tr>
+                    <th>Modalidade</th>
+                    <th style="text-align: center;">Qtd</th>
+                    <th style="text-align: right;">Total Vendas</th>
+                    <th style="text-align: right;">Lucro Total</th>
+                    <th style="text-align: right;">Margem %</th>
+                  </tr>
+                </thead>
+                <tbody id="dashLucroModalidadeBody"></tbody>
+              </table>
+            </div>
+
+            <!-- 2. Por Faixa de Rentabilidade -->
+            <div class="kpi-card" style="padding: 24px;">
+              <h3 style="font-size: 1.05rem; font-weight: 700; margin-bottom: 12px;">Lucro por Faixa de Rentabilidade</h3>
+              <table class="dash-detail-table">
+                <thead>
+                  <tr>
+                    <th>Faixa</th>
+                    <th style="text-align: center;">Qtd</th>
+                    <th style="text-align: right;">Lucro Total</th>
+                    <th style="text-align: right;">% do Lucro</th>
+                  </tr>
+                </thead>
+                <tbody id="dashLucroFaixaBody"></tbody>
+              </table>
+            </div>
+
+            <!-- 3. Por Marca / Montadora -->
+            <div class="kpi-card" style="padding: 24px;">
+              <h3 style="font-size: 1.05rem; font-weight: 700; margin-bottom: 12px;">Lucro por Marca / Montadora</h3>
+              <table class="dash-detail-table">
+                <thead>
+                  <tr>
+                    <th>Marca</th>
+                    <th style="text-align: center;">Qtd</th>
+                    <th style="text-align: right;">Lucro Total</th>
+                    <th style="text-align: right;">Lucro Médio</th>
+                    <th style="text-align: right;">Margem %</th>
+                  </tr>
+                </thead>
+                <tbody id="dashLucroMarcaBody"></tbody>
+              </table>
+            </div>
+
+            <!-- 4. Por Sociedade -->
+            <div class="kpi-card" style="padding: 24px;">
+              <h3 style="font-size: 1.05rem; font-weight: 700; margin-bottom: 12px;">Lucro por Sociedade / Sócio</h3>
+              <table class="dash-detail-table">
+                <thead>
+                  <tr>
+                    <th>Sociedade</th>
+                    <th style="text-align: center;">Qtd</th>
+                    <th style="text-align: right;">Lucro Total</th>
+                    <th style="text-align: right;">Participação</th>
+                  </tr>
+                </thead>
+                <tbody id="dashLucroSociedadeBody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- RANKING COMPLETO DE VEÍCULOS VENDIDOS -->
+          <div class="kpi-card" style="padding: 24px; margin-bottom: 32px;">
+            <div class="page-header" style="margin-bottom: 16px;">
+              <div>
+                <h3 style="font-size: 1.15rem; font-weight: 700;">Ranking Detalhado de Veículos Vendidos</h3>
+                <p class="page-header-subtitle">Comparativo completo de receita, custo e margem de cada venda</p>
+              </div>
+            </div>
+            <div style="overflow-x: auto;">
+              <table class="dash-detail-table">
+                <thead>
+                  <tr>
+                    <th style="text-align: center; width: 40px;">#</th>
+                    <th>Veículo</th>
+                    <th>Data Venda</th>
+                    <th>Modalidade</th>
+                    <th>Sociedade</th>
+                    <th style="text-align: right;">Custo Final</th>
+                    <th style="text-align: right;">Valor Venda</th>
+                    <th style="text-align: right;">Lucro Realizado</th>
+                    <th style="text-align: right;">Margem %</th>
+                  </tr>
+                </thead>
+                <tbody id="dashLucroRankingBody">
+                  <tr><td colspan="9" style="text-align: center; color: var(--text-dim);">Nenhum veículo vendido no período selecionado</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div><!-- FIM dashSectionLucro -->
       </section>
 
       <!-- ====================================================================
@@ -422,20 +776,20 @@
         <div class="kpi-grid">
           <div class="kpi-card">
             <span class="kpi-label">Total de Gastos</span>
-            <div class="kpi-value" id="expKpiTotal">R$ 24.061,80</div>
+            <div class="kpi-value" id="expKpiTotal">R$ 0,00</div>
             <span class="kpi-footer-badge badge-neutral">Soma de todos os veículos</span>
           </div>
 
           <div class="kpi-card">
             <span class="kpi-label">Maior Gasto Individual</span>
-            <div class="kpi-value" id="expKpiMax">R$ 5.000,00</div>
-            <span class="kpi-footer-badge badge-neutral">Comissão / Sociedade Lagoa</span>
+            <div class="kpi-value" id="expKpiMax">R$ 0,00</div>
+            <span class="kpi-footer-badge badge-neutral" id="expKpiMaxInfo">Nenhuma despesa</span>
           </div>
 
           <div class="kpi-card">
             <span class="kpi-label">Carro com Mais Despesas</span>
-            <div class="kpi-value" id="expKpiTopCar">Fiat Toro</div>
-            <span class="kpi-footer-badge badge-neutral">R$ 10.200 em 6 itens</span>
+            <div class="kpi-value" id="expKpiTopCar">-</div>
+            <span class="kpi-footer-badge badge-neutral" id="expKpiTopCarInfo">Nenhuma despesa</span>
           </div>
         </div>
 
@@ -586,20 +940,20 @@
         <div class="kpi-grid">
           <div class="kpi-card">
             <span class="kpi-label">Entradas Recebidas</span>
-            <div class="kpi-value" id="kpiEntradasTotal">R$ 84.000</div>
-            <span class="kpi-footer-badge badge-positive">4 carros vendidos com entrada</span>
+            <div class="kpi-value" id="kpiEntradasTotal">R$ 0,00</div>
+            <span class="kpi-footer-badge badge-positive" id="kpiEntradasInfo">0 carros vendidos com entrada</span>
           </div>
 
           <div class="kpi-card">
             <span class="kpi-label">Parcelas em Aberto</span>
-            <div class="kpi-value" id="kpiParcelasAberto">148 parcelas</div>
-            <span class="kpi-footer-badge badge-neutral">Total a receber no carnê</span>
+            <div class="kpi-value" id="kpiParcelasAberto">0 parcelas</div>
+            <span class="kpi-footer-badge badge-neutral" id="kpiParcelasInfo">Total a receber: R$ 0,00</span>
           </div>
 
           <div class="kpi-card">
             <span class="kpi-label">Valor Mensal Previsto</span>
-            <div class="kpi-value" id="kpiValorMensalFluxo">R$ 6.000 / mês</div>
-            <span class="kpi-footer-badge badge-positive">Fluxo regular de caixa</span>
+            <div class="kpi-value" id="kpiValorMensalFluxo">R$ 0,00 / mês</div>
+            <span class="kpi-footer-badge badge-positive" id="kpiValorMensalInfo">Nenhum carnê ativo</span>
           </div>
         </div>
 
@@ -1050,6 +1404,17 @@
             </div>
           </div>
 
+          <div class="form-grid-2" style="margin-bottom: 0;">
+            <div class="form-group">
+              <label for="vehStatus">Status do Veículo</label>
+              <select id="vehStatus" class="select-control">
+                <option value="Em estoque">🟢 Em estoque</option>
+                <option value="Em preparação">🟡 Em preparação</option>
+              </select>
+              <small style="color: var(--text-dim); margin-top: 4px;">Veículos vendidos têm o status alterado automaticamente ao registrar a venda.</small>
+            </div>
+          </div>
+
           <div class="form-grid-3">
             <div class="form-group">
               <label for="vehCombustivel">Combustível</label>
@@ -1313,8 +1678,9 @@
 
           <!-- PAINEL 1: UPLOAD DE ARQUIVO (DROPZONE) -->
           <div id="panelDocUpload" class="repo-tab-panel">
-            <div class="repo-dropzone" id="docDropzone" onclick="document.getElementById('docFileInput').click()">
-              <input type="file" id="docFileInput" accept="image/*,application/pdf,.doc,.docx,.xlsx,.txt" style="display: none;" onchange="handleDocFileSelected(event)">
+            <!-- O input fica fora da área clicável e é aberto pelo label (mais confiável em celulares) -->
+            <input type="file" id="docFileInput" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.odt,.ods,.csv,.txt" style="display: none;" onchange="handleDocFileSelected(event)">
+            <label class="repo-dropzone" id="docDropzone" for="docFileInput" style="display: block; cursor: pointer;">
               <div class="repo-dropzone-icon">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
               </div>
@@ -1322,7 +1688,7 @@
               <span style="font-size: 0.78rem; color: var(--text-dim); margin-top: 4px; display: block;">
                 Suporta PDFs, Fotos (JPG, PNG), Laudos e Documentos
               </span>
-            </div>
+            </label>
 
             <!-- Preview do arquivo selecionado -->
             <div class="repo-file-preview-card" id="docUploadPreviewCard" style="display: none;">
@@ -1467,11 +1833,43 @@
           <div class="form-grid-2">
             <div class="form-group">
               <label for="editInstNumParcelas">Quantidade Total de Parcelas *</label>
-              <input type="number" id="editInstNumParcelas" class="input-control" required min="1" max="120" oninput="recalcEditInstTotal()">
+              <input type="number" id="editInstNumParcelas" class="input-control" required min="1" max="120" oninput="onEditInstNumParcelasChange()">
             </div>
             <div class="form-group">
-              <label for="editInstValorParcela">Valor de Cada Parcela (R$) *</label>
-              <input type="number" step="0.01" id="editInstValorParcela" class="input-control" required min="1" oninput="recalcEditInstTotal()">
+              <label for="editInstValorParcela">Valor Padrão das Parcelas (R$) *</label>
+              <input type="number" step="0.01" id="editInstValorParcela" class="input-control" required min="0.01" oninput="onEditInstValorPadraoChange()">
+            </div>
+          </div>
+
+          <!-- BLOCO DE EDIÇÃO INDIVIDUAL DA PARCELA -->
+          <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 14px; margin-bottom: 16px;">
+            <div style="font-weight: 700; font-size: 0.92rem; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between;">
+              <span>📝 Selecionar Parcela para Ajustar Valor e Vencimento</span>
+              <span id="editInstParcelasBadge" class="status-pill upcoming" style="font-size: 0.75rem;">0 parcelas</span>
+            </div>
+            <div class="form-grid-2">
+              <div class="form-group" style="margin-bottom: 0;">
+                <label for="editInstSelectParcela">Escolha a Parcela</label>
+                <select id="editInstSelectParcela" class="select-control" onchange="onEditInstParcelaSelected()">
+                  <!-- Preenchido dinamicamente via JS -->
+                </select>
+              </div>
+              <div class="form-group" style="margin-bottom: 0;">
+                <label for="editInstValorIndividual">Valor da Parcela Selecionada (R$)</label>
+                <div style="display: flex; gap: 8px;">
+                  <input type="number" step="0.01" id="editInstValorIndividual" class="input-control" placeholder="0.00" onchange="onEditInstValorIndividualChange(false)">
+                  <button type="button" class="btn btn-secondary btn-sm" onclick="onEditInstValorIndividualChange(true)" style="white-space: nowrap;" title="Confirmar alteração do valor desta parcela">
+                    Aplicar
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div class="form-group" style="margin: 12px 0 0;">
+              <label for="editInstVencIndividual">Vencimento da Parcela Selecionada</label>
+              <input type="date" id="editInstVencIndividual" class="input-control" onchange="onEditInstVencIndividualChange()">
+            </div>
+            <div id="editInstParcelaNotice" style="font-size: 0.8rem; color: var(--text-muted); margin-top: 8px;">
+              💡 Ao editar o valor desta parcela, você poderá escolher se deseja atualizar o valor das demais parcelas também.
             </div>
           </div>
 
@@ -1482,7 +1880,8 @@
             </div>
             <div class="form-group">
               <label for="editInstDataVencimento">Data Base / 1º Vencimento</label>
-              <input type="date" id="editInstDataVencimento" class="input-control">
+              <input type="date" id="editInstDataVencimento" class="input-control" onchange="onEditInstDataBaseChange()">
+              <small style="font-size: 0.75rem; color: var(--text-dim);">Ao mudar, as parcelas pendentes passam a vencer todo mês a partir desta data.</small>
             </div>
           </div>
 
@@ -1496,7 +1895,10 @@
           </div>
 
           <div style="background: var(--primary-light); border: 1px solid rgba(37, 99, 235, 0.3); padding: 14px; border-radius: var(--radius-md); display: flex; justify-content: space-between; align-items: center;">
-            <span style="font-weight: 600; font-size: 0.88rem; color: var(--primary);">Novo Valor Total da Venda:</span>
+            <div>
+              <span style="font-weight: 600; font-size: 0.88rem; color: var(--primary); display: block;">Novo Valor Total da Venda:</span>
+              <span style="font-size: 0.78rem; color: var(--text-muted);" id="editInstSubtotalParcelas">Soma das parcelas: R$ 0,00</span>
+            </div>
             <strong style="font-size: 1.25rem; color: var(--primary);" id="editInstTotalCalculado">R$ 0,00</strong>
           </div>
         </div>
@@ -1568,7 +1970,7 @@
           <div class="form-group" id="settleQtdBlock" style="display: none;">
             <label for="settleQtdParcelas">Quantas Parcelas Quitar Agora? *</label>
             <input type="number" id="settleQtdParcelas" class="input-control" min="1" value="1" oninput="onSettleQtdChange()">
-            <small style="color: var(--text-dim);">Serão baixadas as próximas parcelas em aberto por ordem cronológica.</small>
+            <small style="color: var(--text-dim);">Serão quitadas e abatidas as <strong>últimas parcelas</strong> em aberto do carnê (de trás para frente), mantendo as parcelas mais próximas inalteradas.</small>
           </div>
 
           <!-- CAMPO PRINCIPAL: VALOR A SER PAGO (R$) -->

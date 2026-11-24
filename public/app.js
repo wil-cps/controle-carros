@@ -80,25 +80,59 @@ function requireFullAccess() {
 // ============================================================================
 // REPOSITÓRIO DIGITAL DE ARQUIVOS E FOTOS (ARMAZENADO NO SERVIDOR)
 // ============================================================================
+// O conteúdo (data URL em base64) vai no corpo da requisição e as demais informações
+// no cabeçalho X-Arquivo-Meta. Limite do armazenamento: 25 MB em base64 (~18 MB de arquivo).
+const MAX_ARQUIVO_BASE64 = 25 * 1024 * 1024 - 1024;
+
 const AppFileRepo = {
   async init() {
     return true;
   },
 
   async salvar(id, fileData) {
+    const { dataBase64, ...meta } = fileData || {};
+    const conteudo = String(dataBase64 || '');
+    if (!conteudo) {
+      showToast('Arquivo vazio.');
+      return false;
+    }
+    if (conteudo.length > MAX_ARQUIVO_BASE64) {
+      alert('Arquivo muito grande. O limite é de aproximadamente 18 MB por arquivo.');
+      return false;
+    }
     try {
-      await apiFetch(`/api/arquivos/${Number(id)}`, { method: 'PUT', body: JSON.stringify(fileData) });
+      const res = await fetch(`/api/arquivos/${Number(id)}`, {
+        method: 'PUT',
+        credentials: 'same-origin',
+        headers: {
+          'Content-Type': 'text/plain; charset=utf-8',
+          'X-Arquivo-Meta': encodeURIComponent(JSON.stringify(meta))
+        },
+        body: conteudo
+      });
+      if (!res.ok) {
+        let corpo = null;
+        try { corpo = await res.json(); } catch (e) { corpo = null; }
+        if (res.status === 401) handleSessionExpired();
+        throw new Error((corpo && corpo.erro) || `Erro ${res.status} ao enviar o arquivo.`);
+      }
       return true;
     } catch (err) {
       console.error('Erro ao enviar arquivo:', err);
-      showToast(err.message);
+      alert(`O arquivo não foi salvo: ${err.message || 'falha de conexão com o servidor'}`);
       return false;
     }
   },
 
   async obter(id) {
     try {
-      return await apiFetch(`/api/arquivos/${Number(id)}`);
+      const res = await fetch(`/api/arquivos/${Number(id)}`, { credentials: 'same-origin' });
+      if (!res.ok) {
+        if (res.status === 401) handleSessionExpired();
+        return null;
+      }
+      const meta = JSON.parse(decodeURIComponent(res.headers.get('X-Arquivo-Meta') || '%7B%7D'));
+      return { ...meta, dataBase64: await res.text() };
     } catch (err) {
       return null;
     }
@@ -2022,19 +2056,17 @@ function ensureInstallmentsForCar(car) {
         const mm = String(dueDate.getMonth() + 1).padStart(2, '0');
         const dd = String(Math.min(saleDate.getDate() || 25, 28)).padStart(2, '0');
         const dueDateStr = `${yyyy}-${mm}-${dd}`;
-        const isPaidDefault = (car.id === 1 && i === 1); // Toro parcela 1 já paga na base original
-
         appData.pagamentos.push({
           id: Date.now() + Math.floor(Math.random() * 100000) + i,
           veiculoId: car.id,
           numeroParcela: i,
           dataVencimento: dueDateStr,
-          dataPagamento: isPaidDefault ? dueDateStr : '',
+          dataPagamento: '',
           valor: valParc,
-          valorPago: isPaidDefault ? valParc : null,
-          status: isPaidDefault ? 'pago' : 'pendente',
+          valorPago: null,
+          status: 'pendente',
           mesRef: `${yyyy}-${mm}`,
-          observacao: isPaidDefault ? 'Pago na entrada/Setembro' : ''
+          observacao: ''
         });
       }
     }
@@ -2158,6 +2190,39 @@ function togglePayInstallment(paymentId) {
 // ============================================================================
 // DESPESAS VIEW (EXPENSES)
 // ============================================================================
+function setTextById(id, texto) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = texto;
+}
+
+// Maior gasto e carro com mais despesas, calculados sobre as despesas listadas
+function renderExpenseKpis(list) {
+  const maior = list.reduce((max, d) => (Number(d.valor) || 0) > (Number(max && max.valor) || 0) ? d : max, null);
+  setTextById('expKpiMax', formatMoney(maior ? maior.valor : 0));
+  setTextById('expKpiMaxInfo', maior ? (maior.item || maior.categoria || '-') : 'Nenhuma despesa');
+
+  const porCarro = new Map();
+  list.forEach(d => {
+    const atual = porCarro.get(Number(d.veiculoId)) || { total: 0, itens: 0 };
+    atual.total += Number(d.valor) || 0;
+    atual.itens += 1;
+    porCarro.set(Number(d.veiculoId), atual);
+  });
+  let topId = null;
+  porCarro.forEach((info, id) => {
+    if (topId === null || info.total > porCarro.get(topId).total) topId = id;
+  });
+  if (topId === null) {
+    setTextById('expKpiTopCar', '-');
+    setTextById('expKpiTopCarInfo', 'Nenhuma despesa');
+    return;
+  }
+  const car = appData.veiculos.find(v => Number(v.id) === topId);
+  const info = porCarro.get(topId);
+  setTextById('expKpiTopCar', car ? `${car.marca} ${car.modelo}` : `Veículo #${topId}`);
+  setTextById('expKpiTopCarInfo', `${formatMoney(info.total)} em ${info.itens} ${info.itens === 1 ? 'item' : 'itens'}`);
+}
+
 function renderExpensesTable() {
   const vehFilter = document.getElementById('filterExpenseVehicle') ? document.getElementById('filterExpenseVehicle').value : 'todos';
   const catFilter = document.getElementById('filterExpenseCategory') ? document.getElementById('filterExpenseCategory').value : 'todas';
@@ -2196,6 +2261,7 @@ function renderExpensesTable() {
   const total = list.reduce((acc, d) => acc + (Number(d.valor) || 0), 0);
   const expKpiTotal = document.getElementById('expKpiTotal');
   if (expKpiTotal) expKpiTotal.textContent = formatMoney(total);
+  renderExpenseKpis(list);
 
   const tbody = document.getElementById('expensesTableBody');
   if (!tbody) return;
@@ -2411,6 +2477,56 @@ function createDocumentCardHtml(doc) {
   `;
 }
 
+// Miniaturas: só carregam quando o cartão aparece na tela e ficam guardadas reduzidas (~320 px),
+// para não manter dezenas de fotos em tamanho original na memória do celular.
+const thumbCache = new Map();
+let thumbObserver = null;
+
+function gerarMiniatura(dataUrl, ladoMax = 320) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const escala = Math.min(1, ladoMax / Math.max(img.naturalWidth, img.naturalHeight));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(img.naturalWidth * escala));
+        canvas.height = Math.max(1, Math.round(img.naturalHeight * escala));
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/jpeg', 0.7));
+      } catch (e) {
+        resolve(null);
+      }
+    };
+    img.onerror = () => resolve(null);
+    img.src = dataUrl;
+  });
+}
+
+async function carregarMiniatura(doc) {
+  const imgEl = document.getElementById(`docThumbImg_${doc.id}`);
+  const placeholder = document.getElementById(`docThumbPlaceholder_${doc.id}`);
+  if (!imgEl) return;
+
+  let mini = thumbCache.get(doc.id);
+  if (!mini) {
+    let fileData = await AppFileRepo.obter(doc.id);
+    if (!fileData) {
+      // Logo após anexar, o registro do documento pode ainda estar sendo gravado
+      await new Promise(r => setTimeout(r, 2000));
+      fileData = await AppFileRepo.obter(doc.id);
+    }
+    if (!fileData || !fileData.dataBase64) return;
+    mini = await gerarMiniatura(fileData.dataBase64);
+    if (!mini) return;
+    thumbCache.set(doc.id, mini);
+  }
+  const atual = document.getElementById(`docThumbImg_${doc.id}`);
+  if (!atual) return;
+  atual.src = mini;
+  atual.style.display = 'block';
+  if (placeholder) placeholder.style.display = 'none';
+}
+
 async function loadThumbAsync(doc) {
   setTimeout(async () => {
     const imgEl = document.getElementById(`docThumbImg_${doc.id}`);
@@ -2418,12 +2534,26 @@ async function loadThumbAsync(doc) {
     if (!imgEl) return;
 
     if (doc.temArquivoLocal) {
-      const fileData = await AppFileRepo.obter(doc.id);
-      if (fileData && fileData.dataBase64) {
-        imgEl.src = fileData.dataBase64;
-        imgEl.style.display = 'block';
-        if (placeholder) placeholder.style.display = 'none';
+      if (thumbCache.has(doc.id) || typeof IntersectionObserver === 'undefined') {
+        carregarMiniatura(doc);
+        return;
       }
+      if (!thumbObserver) {
+        thumbObserver = new IntersectionObserver(entries => {
+          entries.forEach(entry => {
+            if (!entry.isIntersecting) return;
+            thumbObserver.unobserve(entry.target);
+            const id = Number(entry.target.dataset.docId);
+            const d = appData.documentos.find(x => Number(x.id) === id);
+            if (d) carregarMiniatura(d);
+          });
+        }, { rootMargin: '200px' });
+      }
+      imgEl.dataset.docId = doc.id;
+      // o <img> está oculto; observa o contêiner visível do cartão
+      const alvo = imgEl.parentElement || imgEl;
+      alvo.dataset.docId = doc.id;
+      thumbObserver.observe(alvo);
     } else if (doc.link && (doc.link.startsWith('http') || doc.link.startsWith('data:'))) {
       imgEl.src = doc.link;
       imgEl.style.display = 'block';
@@ -2583,7 +2713,33 @@ function setPaymentsYear(year) {
   renderPaymentsMatrix();
 }
 
+// Resumo da aba Pagamentos, calculado a partir dos dados carregados
+function renderPaymentsKpis() {
+  const comEntrada = appData.veiculos.filter(v => v.status === 'Vendido' && (Number(v.valorEntrada) || 0) > 0);
+  const totalEntradas = comEntrada.reduce((acc, v) => acc + (Number(v.valorEntrada) || 0), 0);
+  setTextById('kpiEntradasTotal', formatMoney(totalEntradas));
+  setTextById('kpiEntradasInfo', `${comEntrada.length} ${comEntrada.length === 1 ? 'carro vendido' : 'carros vendidos'} com entrada`);
+
+  const abertas = appData.pagamentos.filter(p => p.status !== 'pago');
+  const totalAberto = abertas.reduce((acc, p) => acc + (Number(p.valor) || 0), 0);
+  setTextById('kpiParcelasAberto', `${abertas.length} ${abertas.length === 1 ? 'parcela' : 'parcelas'}`);
+  setTextById('kpiParcelasInfo', `Total a receber: ${formatMoney(totalAberto)}`);
+
+  // Próxima parcela em aberto de cada carnê ativo
+  const proximaPorCarro = new Map();
+  abertas.forEach(p => {
+    const atual = proximaPorCarro.get(Number(p.veiculoId));
+    if (!atual || Number(p.numeroParcela) < Number(atual.numeroParcela)) proximaPorCarro.set(Number(p.veiculoId), p);
+  });
+  const mensal = [...proximaPorCarro.values()].reduce((acc, p) => acc + (Number(p.valor) || 0), 0);
+  setTextById('kpiValorMensalFluxo', `${formatMoney(mensal)} / mês`);
+  setTextById('kpiValorMensalInfo', proximaPorCarro.size
+    ? `${proximaPorCarro.size} ${proximaPorCarro.size === 1 ? 'carnê ativo' : 'carnês ativos'}`
+    : 'Nenhum carnê ativo');
+}
+
 function renderPaymentsMatrix() {
+  renderPaymentsKpis();
   const tbody = document.getElementById('paymentsMatrixBody');
   if (!tbody) return;
 
@@ -2605,12 +2761,7 @@ function renderPaymentsMatrix() {
           cellsHtml += `<td style="color: var(--warning); font-weight: 600;" title="A vencer">Parc. ${pagamento.numeroParcela}</td>`;
         }
       } else {
-        // Exemplo especial da Toro no Excel Toledo (Setembro 2026 = 1/43)
-        if (v.id === 1 && currentPaymentsYear === 2026 && m === '09') {
-          cellsHtml += `<td class="paid-cell">1/43</td>`;
-        } else {
-          cellsHtml += `<td style="color: var(--text-dim);">-</td>`;
-        }
+        cellsHtml += `<td style="color: var(--text-dim);">-</td>`;
       }
     });
 
@@ -3261,8 +3412,9 @@ function handleNativeCameraCapture(event) {
   if (!file) return;
 
   const reader = new FileReader();
-  reader.onload = (e) => {
-    const dataUrl = e.target.result;
+  reader.onload = async (e) => {
+    const reduzida = await comprimirImagemDataUrl(e.target.result, file.type || 'image/jpeg');
+    const dataUrl = reduzida.dataUrl;
     stopCamera();
 
     const liveSec = document.getElementById('cameraLiveSection');
@@ -3274,9 +3426,10 @@ function handleNativeCameraCapture(event) {
     if (imgEl) imgEl.src = dataUrl;
 
     document.getElementById('docFileBase64').value = dataUrl;
-    document.getElementById('docFileName').value = file.name || `Foto_${Date.now()}.jpg`;
-    document.getElementById('docFileSize').value = file.size;
-    document.getElementById('docFileType').value = file.type || 'image/jpeg';
+    document.getElementById('docFileName').value = !file.name ? `Foto_${Date.now()}.jpg`
+      : (reduzida.tipo !== file.type ? trocarExtensaoJpg(file.name) : file.name);
+    document.getElementById('docFileSize').value = reduzida.dataUrl !== e.target.result ? reduzida.tamanho : file.size;
+    document.getElementById('docFileType').value = reduzida.tipo || 'image/jpeg';
     document.getElementById('docOrigin').value = 'camera';
 
     const selTipo = document.getElementById('docTipo');
@@ -3325,13 +3478,17 @@ function handleDocFileSelected(event) {
 
 function processSelectedFile(file) {
   const reader = new FileReader();
-  reader.onload = (e) => {
-    const dataUrl = e.target.result;
+  reader.onerror = () => alert(`Não foi possível ler o arquivo "${file.name}". Tente novamente.`);
+  reader.onload = async (e) => {
+    const reduzida = await comprimirImagemDataUrl(e.target.result, file.type);
+    const dataUrl = reduzida.dataUrl;
+    const nome = reduzida.tipo !== file.type ? trocarExtensaoJpg(file.name) : file.name;
+    const tamanho = reduzida.dataUrl !== e.target.result ? reduzida.tamanho : file.size;
 
     document.getElementById('docFileBase64').value = dataUrl;
-    document.getElementById('docFileName').value = file.name;
-    document.getElementById('docFileSize').value = file.size;
-    document.getElementById('docFileType').value = file.type || 'application/octet-stream';
+    document.getElementById('docFileName').value = nome;
+    document.getElementById('docFileSize').value = tamanho;
+    document.getElementById('docFileType').value = reduzida.tipo || 'application/octet-stream';
     document.getElementById('docOrigin').value = 'upload';
 
     const previewCard = document.getElementById('docUploadPreviewCard');
@@ -3340,11 +3497,11 @@ function processSelectedFile(file) {
     const thumbEl = document.getElementById('docUploadThumb');
     const dropzone = document.getElementById('docDropzone');
 
-    if (nameEl) nameEl.textContent = file.name;
-    if (metaEl) metaEl.textContent = `${(file.type.split('/')[1] || 'ARQUIVO').toUpperCase()} • ${formatBytes(file.size)}`;
+    if (nameEl) nameEl.textContent = nome;
+    if (metaEl) metaEl.textContent = `${((reduzida.tipo || '').split('/')[1] || 'ARQUIVO').toUpperCase()} • ${formatBytes(tamanho)}`;
 
     if (thumbEl) {
-      if (file.type.startsWith('image/')) {
+      if ((reduzida.tipo || '').startsWith('image/')) {
         thumbEl.innerHTML = `<img src="${dataUrl}" style="width:100%; height:100%; object-fit:cover; border-radius:var(--radius-sm);">`;
         const selTipo = document.getElementById('docTipo');
         if (selTipo && selTipo.value === 'CRLV') selTipo.value = 'Fotos';
@@ -3358,7 +3515,7 @@ function processSelectedFile(file) {
     if (previewCard) previewCard.style.display = 'flex';
     if (dropzone) dropzone.style.display = 'none';
 
-    showToast(`Arquivo "${file.name}" pronto para anexar!`);
+    showToast(`Arquivo "${nome}" pronto para anexar!`);
   };
   reader.readAsDataURL(file);
 }
@@ -3376,6 +3533,43 @@ function clearSelectedUploadFile() {
   const dropzone = document.getElementById('docDropzone');
   if (previewCard) previewCard.style.display = 'none';
   if (dropzone) dropzone.style.display = 'block';
+}
+
+// Reduz fotos grandes (ex.: 3 MB do celular) antes de enviar: lado máximo 1600 px, JPEG 85%.
+// Mantém o original se não for imagem, se for GIF/SVG ou se a versão reduzida não ficar menor.
+const FOTO_LADO_MAX = 1600;
+function comprimirImagemDataUrl(dataUrl, tipo) {
+  return new Promise(resolve => {
+    const original = { dataUrl, tipo, tamanho: Math.round((dataUrl.length - dataUrl.indexOf(',') - 1) * 0.75) };
+    if (!/^image\/(jpeg|jpg|png|webp|heic|heif)$/i.test(tipo || '')) return resolve(original);
+    const img = new Image();
+    img.onload = () => {
+      try {
+        let w = img.naturalWidth, h = img.naturalHeight;
+        if (!w || !h) return resolve(original);
+        const escala = Math.min(1, FOTO_LADO_MAX / Math.max(w, h));
+        w = Math.round(w * escala); h = Math.round(h * escala);
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+        const novo = canvas.toDataURL('image/jpeg', 0.85);
+        const tamanho = Math.round((novo.length - novo.indexOf(',') - 1) * 0.75);
+        resolve(tamanho < original.tamanho ? { dataUrl: novo, tipo: 'image/jpeg', tamanho } : original);
+      } catch (e) {
+        resolve(original);
+      }
+    };
+    img.onerror = () => resolve(original);
+    img.src = dataUrl;
+  });
+}
+
+function trocarExtensaoJpg(nome) {
+  if (!nome) return nome;
+  return /\.[a-z0-9]+$/i.test(nome) ? nome.replace(/\.[a-z0-9]+$/i, '.jpg') : `${nome}.jpg`;
 }
 
 // Salvar Documento / Foto no Repositório
@@ -3422,22 +3616,31 @@ async function handleSaveDocument(e) {
     temArquivoLocal: origin !== 'link'
   };
 
-  // Envia o arquivo ao servidor caso seja upload ou foto da câmera
-  if (origin !== 'link' && fileBase64) {
-    const enviado = await AppFileRepo.salvar(docId, {
-      id: docId,
-      veiculoId: carId,
-      nome: fileName,
-      tipoMime: fileType,
-      tamanhoBytes: fileSize,
-      dataBase64: fileBase64,
-      criadoEm: new Date().toISOString()
-    });
-    if (!enviado) return;
-  }
+  const btnSalvar = document.querySelector('#formDocument button[type=submit]');
+  const textoBtn = btnSalvar ? btnSalvar.textContent : '';
+  if (btnSalvar) { btnSalvar.disabled = true; btnSalvar.textContent = 'Enviando...'; }
+  try {
+    // Envia o arquivo ao servidor caso seja upload ou foto da câmera
+    if (origin !== 'link' && fileBase64) {
+      const enviado = await AppFileRepo.salvar(docId, {
+        id: docId,
+        veiculoId: carId,
+        nome: fileName,
+        tipoMime: fileType,
+        tamanhoBytes: fileSize,
+        dataBase64: fileBase64,
+        criadoEm: new Date().toISOString()
+      });
+      if (!enviado) return;
+    }
 
-  appData.documentos.push(docObj);
-  saveDatabase();
+    appData.documentos.push(docObj);
+    saveDatabase();
+    // Espera o registro do documento ser gravado antes de exibir a miniatura
+    if (saveInFlight) await saveInFlight;
+  } finally {
+    if (btnSalvar) { btnSalvar.disabled = false; btnSalvar.textContent = textoBtn; }
+  }
   closeModalDocument();
   renderDocumentsGrid();
   if (currentDetailCarId && currentDetailCarId === carId) {
@@ -3482,21 +3685,14 @@ function openModalEditInstallments(carId) {
     document.getElementById('editInstValorParcela').value = valParc > 0 ? valParc : '';
     document.getElementById('editInstValorEntrada').value = valEntrada;
 
-    // Próxima data de vencimento padrão
-    const nextDueDate = new Date();
-    nextDueDate.setMonth(nextDueDate.getMonth() + 1);
-    document.getElementById('editInstDataVencimento').value = nextDueDate.toISOString().slice(0, 10);
-
     // Carregar parcelas existentes ou gerar virtualmente para o plano
     let existing = appData.pagamentos.filter(p => Number(p.veiculoId) === car.id);
     existing.sort((a, b) => Number(a.numeroParcela) - Number(b.numeroParcela));
 
     if (existing.length === 0) {
-      const baseDate = new Date(car.dataVenda || new Date());
+      const baseDate = car.dataVenda || toISODateLocal(new Date());
       for (let i = 1; i <= numParc; i++) {
-        const d = new Date(baseDate);
-        d.setMonth(d.getMonth() + i);
-        const dStr = d.toISOString().slice(0, 10);
+        const dStr = addMonthsISO(baseDate, i);
         existing.push({
           id: Date.now() + i,
           veiculoId: car.id,
@@ -3522,6 +3718,16 @@ function openModalEditInstallments(carId) {
         mesRef: p.mesRef || ''
       }))
     };
+
+    // Data base = vencimento da primeira parcela pendente (ou próximo mês, se não houver)
+    const primeiraPend = editInstPlan.parcelas.find(p => p.status !== 'pago' && p.dataVencimento);
+    let dataBase = primeiraPend ? primeiraPend.dataVencimento : '';
+    if (!dataBase) {
+      const prox = new Date();
+      prox.setMonth(prox.getMonth() + 1);
+      dataBase = toISODateLocal(prox);
+    }
+    document.getElementById('editInstDataVencimento').value = dataBase;
 
     // Popula o seletor de parcelas e seleciona a primeira pendente
     const firstPendente = editInstPlan.parcelas.find(p => p.status !== 'pago');
@@ -3571,6 +3777,8 @@ function onEditInstParcelaSelected() {
     const val = Number(p.valor) || 0;
     valInput.value = val.toFixed(2);
     editInstLastEditedValue = val;
+    const vencInput = document.getElementById('editInstVencIndividual');
+    if (vencInput) vencInput.value = p.dataVencimento || '';
 
     if (notice) {
       if (p.status === 'pago') {
@@ -3636,6 +3844,46 @@ function onEditInstValorIndividualChange(isManualClick = false) {
   }
 }
 
+// Soma meses a uma data AAAA-MM-DD mantendo o dia (ajusta para o último dia do mês quando preciso)
+function addMonthsISO(dataISO, meses) {
+  const [y, m, d] = String(dataISO).split('-').map(Number);
+  if (!y || !m || !d) return '';
+  const alvo = new Date(y, m - 1 + meses, 1);
+  const ultimoDia = new Date(alvo.getFullYear(), alvo.getMonth() + 1, 0).getDate();
+  alvo.setDate(Math.min(d, ultimoDia));
+  return toISODateLocal(alvo);
+}
+
+// Nova data base: reprograma os vencimentos mês a mês a partir dela
+// (todas as parcelas em "Redefinir do zero"; só as pendentes nos demais modos)
+function onEditInstDataBaseChange() {
+  const base = document.getElementById('editInstDataVencimento').value;
+  if (!base || !editInstPlan || !editInstPlan.parcelas) return;
+  const modo = document.getElementById('editInstModo').value;
+  const alvo = editInstPlan.parcelas.filter(p => modo === 'redefinir_tudo' || p.status !== 'pago');
+  alvo.forEach((p, i) => {
+    p.dataVencimento = addMonthsISO(base, i);
+    p.mesRef = p.dataVencimento.slice(0, 7);
+  });
+  const sel = document.getElementById('editInstSelectParcela');
+  populateEditInstParcelaSelect(sel ? Number(sel.value) : null);
+  if (alvo.length) showToast(`Vencimentos de ${alvo.length} parcela(s) reprogramados a partir de ${formatDate(base)}.`);
+}
+
+// Altera só o vencimento da parcela selecionada
+function onEditInstVencIndividualChange() {
+  const sel = document.getElementById('editInstSelectParcela');
+  const novaData = document.getElementById('editInstVencIndividual').value;
+  if (!sel || !novaData || !editInstPlan || !editInstPlan.parcelas) return;
+  const numParc = Number(sel.value);
+  const p = editInstPlan.parcelas.find(item => item.numeroParcela === numParc);
+  if (!p || p.dataVencimento === novaData) return;
+  p.dataVencimento = novaData;
+  p.mesRef = novaData.slice(0, 7);
+  populateEditInstParcelaSelect(numParc);
+  showToast(`Vencimento da Parcela ${numParc} alterado para ${formatDate(novaData)}.`);
+}
+
 function onEditInstValorPadraoChange() {
   const valPadrao = Number(document.getElementById('editInstValorParcela').value) || 0;
   if (valPadrao <= 0 || !editInstPlan || !editInstPlan.parcelas) return;
@@ -3661,15 +3909,13 @@ function onEditInstNumParcelasChange() {
   const valPadrao = Number(document.getElementById('editInstValorParcela').value) || 0;
 
   if (newNum > currentCount) {
-    // Adiciona parcelas
-    let lastDate = new Date();
+    // Adiciona parcelas, um mês depois da última
+    let lastDate = toISODateLocal(new Date());
     if (currentCount > 0 && editInstPlan.parcelas[currentCount - 1].dataVencimento) {
-      lastDate = new Date(editInstPlan.parcelas[currentCount - 1].dataVencimento);
+      lastDate = editInstPlan.parcelas[currentCount - 1].dataVencimento;
     }
     for (let i = currentCount + 1; i <= newNum; i++) {
-      const d = new Date(lastDate);
-      d.setMonth(d.getMonth() + (i - currentCount));
-      const dStr = d.toISOString().slice(0, 10);
+      const dStr = addMonthsISO(lastDate, i - currentCount);
       editInstPlan.parcelas.push({
         id: Date.now() + i,
         numeroParcela: i,
@@ -3745,7 +3991,7 @@ function handleSaveEditInstallments(e) {
         dataPagamento: '',
         valor: p.valor,
         status: 'pendente',
-        mesRef: p.mesRef || (p.dataVencimento ? p.dataVencimento.slice(0, 7) : '')
+        mesRef: p.dataVencimento ? p.dataVencimento.slice(0, 7) : (p.mesRef || '')
       });
     });
   } else if (modo === 'ajustar_pendentes') {
@@ -3775,6 +4021,10 @@ function handleSaveEditInstallments(e) {
       const match = appData.pagamentos.find(x => Number(x.veiculoId) === carId && Number(x.numeroParcela) === p.numeroParcela);
       if (match) {
         match.valor = p.valor;
+        if (match.status !== 'pago' && p.dataVencimento) {
+          match.dataVencimento = p.dataVencimento;
+          match.mesRef = p.dataVencimento.slice(0, 7);
+        }
       } else {
         appData.pagamentos.push({
           id: Date.now() + p.numeroParcela + Math.floor(Math.random() * 1000),

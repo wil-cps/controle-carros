@@ -1,16 +1,23 @@
-{
+﻿{
   "name": "controle-carros",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "private": true,
-  "description": "AutoManage Toledo - controle de compra e venda de veículos com servidor Node.js + SQLite",
-  "main": "server/server.js",
+  "description": "AutoManage Toledo - controle de compra e venda de veículos (Cloudflare Workers + D1 + KV)",
   "scripts": {
-    "start": "node server/server.js"
+    "start": "npm run dev",
+    "dev": "wrangler d1 migrations apply controle-carros --local && wrangler dev",
+    "deploy": "wrangler d1 migrations apply controle-carros --remote && wrangler deploy",
+    "backup": "node scripts/backup.mjs",
+    "exportar-banco-local": "node scripts/exportar-banco-local.mjs"
   },
   "engines": {
     "node": ">=22.13.0"
   },
-  "dependencies": {
-    "express": "^4.21.2"
+  "devDependencies": {
+    "wrangler": "4.154.0"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "workerd@1.20261023.1": true
   }
 }
