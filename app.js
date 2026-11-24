@@ -31,6 +31,8 @@ let currentPaymentsYear = 2026;
 let currentInventoryView = 'cards'; // 'cards' ou 'table'
 let chartLucroInstance = null;
 let chartCategoriasInstance = null;
+let currentDashboardTab = 'geral';
+let chartDashManutencaoCatInstance = null;
 // Período do dashboard: tipo = 'dia' | 'semana' | 'mes' | 'ano' | 'tudo' | 'personalizado'
 let dashboardPeriod = { tipo: 'tudo', inicio: '', fim: '' };
 
@@ -693,11 +695,11 @@ function populateFilterSelects() {
   populateSocioFilter();
 }
 
-// Filtro de sócios do estoque: usuários vinculados + sociedades em texto ainda não vinculadas
+// Filtro de sócios do estoque e dashboard: usuários vinculados + sociedades em texto ainda não vinculadas
 function populateSocioFilter() {
   const filterSociedade = document.getElementById('filterSociedade');
-  if (!filterSociedade) return;
-  const currentVal = filterSociedade.value;
+  const dashFilterSociedade = document.getElementById('dashFilterSociedade');
+  if (!filterSociedade && !dashFilterSociedade) return;
 
   const socios = new Map();
   availableSocios.forEach(s => socios.set(`socio:${s.id}`, s.nome));
@@ -706,14 +708,37 @@ function populateSocioFilter() {
     else if (v.sociedade) socios.set(`texto:${v.sociedade}`, `${v.sociedade} (sem usuário)`);
   });
 
-  filterSociedade.innerHTML = '<option value="todos">Todos os Sócios</option>' +
+  const optionsHtml = '<option value="todos">Todos os Sócios</option>' +
     [...socios.entries()]
       .sort((a, b) => a[1].localeCompare(b[1]))
       .map(([valor, nome]) => `<option value="${escapeHtml(valor)}">Sócio: ${escapeHtml(nome)}</option>`)
       .join('') +
     '<option value="sem_sociedade">Próprio (sem sócio)</option>';
 
-  filterSociedade.value = [...filterSociedade.options].some(o => o.value === currentVal) ? currentVal : 'todos';
+  [filterSociedade, dashFilterSociedade].forEach(el => {
+    if (!el) return;
+    const currentVal = el.value;
+    el.innerHTML = optionsHtml;
+    const hasOption = el.options && el.options.length ? [...el.options].some(o => o.value === currentVal) : true;
+    el.value = (hasOption && currentVal) ? currentVal : 'todos';
+  });
+}
+
+function vehicleMatchesSociedade(v, socFilter) {
+  if (!socFilter || socFilter === 'todos') return true;
+  if (socFilter === 'sem_sociedade') return !v.socioId && !v.sociedade;
+  if (socFilter.startsWith('socio:')) {
+    const id = Number(socFilter.replace('socio:', ''));
+    if (v.socioId && Number(v.socioId) === id) return true;
+    const socioUser = availableSocios.find(s => Number(s.id) === id);
+    if (socioUser && v.sociedade && v.sociedade.trim().toLowerCase() === socioUser.nome.trim().toLowerCase()) return true;
+    return false;
+  }
+  if (socFilter.startsWith('texto:')) {
+    const nome = socFilter.replace('texto:', '').trim();
+    return (v.sociedade || '').trim().toLowerCase() === nome.toLowerCase();
+  }
+  return true;
 }
 
 // Campo "Sócio" do cadastro de veículo, preenchido a partir do cadastro de usuários
@@ -921,14 +946,36 @@ function syncDashboardPeriodControls() {
   if (to) to.value = dashboardPeriod.fim;
 }
 
+function switchDashboardTab(tab) {
+  currentDashboardTab = tab || 'geral';
+  const tabs = ['geral', 'despesas', 'vendas', 'lucro'];
+  tabs.forEach(t => {
+    const btn = document.getElementById(`dashTab${t.charAt(0).toUpperCase() + t.slice(1)}`);
+    const sec = document.getElementById(`dashSection${t.charAt(0).toUpperCase() + t.slice(1)}`);
+    if (btn) btn.classList.toggle('active', t === currentDashboardTab);
+    if (sec) sec.style.display = t === currentDashboardTab ? 'block' : 'none';
+  });
+
+  renderDashboard();
+}
+
 function renderDashboard() {
   updateCalculations();
   syncDashboardPeriodControls();
+  populateSocioFilter();
 
-  // KPIs — estoque é sempre a posição atual; vendas, lucro e despesas seguem o período filtrado
-  const inStockCars = appData.veiculos.filter(v => v.status !== 'Vendido');
-  const soldCars = appData.veiculos.filter(v => v.status === 'Vendido' && isDateInDashboardPeriod(v.dataVenda));
-  const despesasPeriodo = appData.despesas.filter(d => isDateInDashboardPeriod(d.data));
+  const socFilter = document.getElementById('dashFilterSociedade')?.value || 'todos';
+
+  // KPIs — estoque é a posição atual filtrada pela sociedade; vendas, lucro e despesas seguem o período e sociedade
+  const inStockCars = appData.veiculos.filter(v => v.status !== 'Vendido' && vehicleMatchesSociedade(v, socFilter));
+  const soldCars = appData.veiculos.filter(v => v.status === 'Vendido' && isDateInDashboardPeriod(v.dataVenda) && vehicleMatchesSociedade(v, socFilter));
+  const despesasPeriodo = appData.despesas.filter(d => {
+    if (!isDateInDashboardPeriod(d.data)) return false;
+    if (!socFilter || socFilter === 'todos') return true;
+    const car = appData.veiculos.find(v => Number(v.id) === Number(d.veiculoId));
+    if (car) return vehicleMatchesSociedade(car, socFilter);
+    return socFilter === 'sem_sociedade';
+  });
 
   const totalEstoqueCusto = inStockCars.reduce((acc, v) => acc + (v.custoFinal || 0), 0);
   const totalLucro = soldCars.reduce((acc, v) => acc + (v.lucro || 0), 0);
@@ -937,28 +984,46 @@ function renderDashboard() {
   const totalDespesas = despesasPeriodo.reduce((acc, d) => acc + (Number(d.valor) || 0), 0);
   const rentabilidade = totalCustoVendidos > 0 ? Math.round((totalLucro / totalCustoVendidos) * 100) : 0;
 
-  document.getElementById('kpiEstoqueValor').textContent = formatMoney(totalEstoqueCusto);
-  document.getElementById('kpiEstoqueCount').textContent = `${inStockCars.length} veículos em pátio (posição atual)`;
+  const elEstoqueValor = document.getElementById('kpiEstoqueValor');
+  const elEstoqueCount = document.getElementById('kpiEstoqueCount');
+  const elLucroTotal = document.getElementById('kpiLucroTotal');
+  const elLucroBadge = document.getElementById('kpiLucroBadge');
+  const elCarrosVendidos = document.getElementById('kpiCarrosVendidos');
+  const elVendaTotalValor = document.getElementById('kpiVendaTotalValor');
+  const elDespesasTotal = document.getElementById('kpiDespesasTotal');
+  const elDespesasCount = document.getElementById('kpiDespesasCount');
 
-  document.getElementById('kpiLucroTotal').textContent = formatMoney(totalLucro);
-  document.getElementById('kpiLucroBadge').textContent = `${rentabilidade >= 0 ? '+' : ''}${rentabilidade}% rentabilidade média`;
-  document.getElementById('kpiCarrosVendidos').textContent = soldCars.length;
-  document.getElementById('kpiVendaTotalValor').textContent = `${formatMoney(totalVendasValor)} em vendas`;
+  if (elEstoqueValor) elEstoqueValor.textContent = formatMoney(totalEstoqueCusto);
+  if (elEstoqueCount) elEstoqueCount.textContent = `${inStockCars.length} veículos em pátio (posição atual)`;
 
-  document.getElementById('kpiDespesasTotal').textContent = formatMoney(totalDespesas);
-  document.getElementById('kpiDespesasCount').textContent = `${despesasPeriodo.length} despesas lançadas`;
+  if (elLucroTotal) elLucroTotal.textContent = formatMoney(totalLucro);
+  if (elLucroBadge) elLucroBadge.textContent = `${rentabilidade >= 0 ? '+' : ''}${rentabilidade}% rentabilidade média`;
+  if (elCarrosVendidos) elCarrosVendidos.textContent = soldCars.length;
+  if (elVendaTotalValor) elVendaTotalValor.textContent = `${formatMoney(totalVendasValor)} em vendas`;
+
+  if (elDespesasTotal) elDespesasTotal.textContent = formatMoney(totalDespesas);
+  if (elDespesasCount) elDespesasCount.textContent = `${despesasPeriodo.length} despesas lançadas`;
 
   renderOverdueKpi();
 
   // Veículos de destaque no dashboard
   const container = document.getElementById('dashboardVehiclesGrid');
   if (container) {
-    const featured = appData.veiculos.slice(0, 4);
-    container.innerHTML = featured.map(v => createVehicleCardHtml(v)).join('');
+    const featured = appData.veiculos.filter(v => vehicleMatchesSociedade(v, socFilter)).slice(0, 4);
+    if (featured.length > 0) {
+      container.innerHTML = featured.map(v => createVehicleCardHtml(v)).join('');
+    } else {
+      container.innerHTML = '<p style="color: var(--text-dim); padding: 12px; grid-column: 1 / -1;">Nenhum veículo encontrado para a sociedade selecionada.</p>';
+    }
   }
 
-  // Gráficos
-  renderDashboardCharts();
+  // Gráficos da Visão Geral
+  renderDashboardCharts(soldCars, despesasPeriodo);
+
+  // Renderizar as sub-visões detalhadas
+  renderDashboardDespesasVisao(socFilter);
+  renderDashboardVendasVisao(socFilter);
+  renderDashboardLucroVisao(socFilter);
 }
 
 // Parcela em atraso: não paga e com vencimento anterior a hoje
@@ -992,6 +1057,8 @@ function renderOverdueKpi() {
   const card = document.getElementById('kpiAtrasoCard');
   const value = document.getElementById('kpiAtrasoCarros');
 
+  if (!value || !badge || !card) return;
+
   value.textContent = cars.length;
   value.style.color = cars.length > 0 ? 'var(--danger)' : '';
 
@@ -1008,15 +1075,24 @@ function renderOverdueKpi() {
   }
 }
 
-function renderDashboardCharts() {
+function renderDashboardCharts(soldList = null, despesasList = null) {
   const ctxLucro = document.getElementById('chartLucroCarros');
   const ctxCat = document.getElementById('chartCategoriasDespesas');
+  const socFilter = document.getElementById('dashFilterSociedade')?.value || 'todos';
+
+  const sold = soldList || appData.veiculos.filter(v => v.status === 'Vendido' && isDateInDashboardPeriod(v.dataVenda) && vehicleMatchesSociedade(v, socFilter));
+  const despesas = despesasList || appData.despesas.filter(d => {
+    if (!isDateInDashboardPeriod(d.data)) return false;
+    if (!socFilter || socFilter === 'todos') return true;
+    const car = appData.veiculos.find(v => Number(v.id) === Number(d.veiculoId));
+    if (car) return vehicleMatchesSociedade(car, socFilter);
+    return socFilter === 'sem_sociedade';
+  });
 
   if (ctxLucro) {
     if (chartLucroInstance) chartLucroInstance.destroy();
 
     // Comparativo de carros vendidos no período: Custo Final vs Venda
-    const sold = appData.veiculos.filter(v => v.status === 'Vendido' && isDateInDashboardPeriod(v.dataVenda));
     const labels = sold.map(v => `${v.marca} ${v.modelo.split(' ')[0]}`);
     const custos = sold.map(v => v.custoFinal);
     const vendas = sold.map(v => Number(v.valorVenda) || 0);
@@ -1073,7 +1149,7 @@ function renderDashboardCharts() {
 
     // Agrupamento por categoria (despesas do período)
     const catMap = {};
-    appData.despesas.filter(d => isDateInDashboardPeriod(d.data)).forEach(d => {
+    despesas.forEach(d => {
       const cat = d.categoria || 'Outros';
       catMap[cat] = (catMap[cat] || 0) + (Number(d.valor) || 0);
     });
@@ -1108,6 +1184,453 @@ function renderDashboardCharts() {
         }
       }
     });
+  }
+}
+
+// ============================================================================
+// VISÕES DETALHADAS DO DASHBOARD
+// ============================================================================
+
+// 1. Visão de Despesas & Aquisições (com filtros de prazo e sociedade)
+function renderDashboardDespesasVisao(socFilter) {
+  const acquiredCars = appData.veiculos.filter(v => isDateInDashboardPeriod(v.dataCompra) && vehicleMatchesSociedade(v, socFilter));
+  const despesasPeriodo = appData.despesas.filter(d => {
+    if (!isDateInDashboardPeriod(d.data)) return false;
+    if (!socFilter || socFilter === 'todos') return true;
+    const car = appData.veiculos.find(v => Number(v.id) === Number(d.veiculoId));
+    if (car) return vehicleMatchesSociedade(car, socFilter);
+    return socFilter === 'sem_sociedade';
+  });
+
+  const totalAquisicao = acquiredCars.reduce((acc, v) => acc + (Number(v.valorCompra) || Number(v.custoAquisicao) || 0), 0);
+  const totalManutencao = despesasPeriodo.reduce((acc, d) => acc + (Number(d.valor) || 0), 0);
+  const investimentoTotal = totalAquisicao + totalManutencao;
+
+  const kpiAquisicao = document.getElementById('dashKpiAquisicaoValor');
+  const kpiAquisicaoCount = document.getElementById('dashKpiAquisicaoCount');
+  const kpiManutencao = document.getElementById('dashKpiManutencaoValor');
+  const kpiManutencaoCount = document.getElementById('dashKpiManutencaoCount');
+  const kpiInvestimento = document.getElementById('dashKpiInvestimentoTotal');
+
+  if (kpiAquisicao) kpiAquisicao.textContent = formatMoney(totalAquisicao);
+  if (kpiAquisicaoCount) kpiAquisicaoCount.textContent = `${acquiredCars.length} veículo(s) adquirido(s)`;
+  if (kpiManutencao) kpiManutencao.textContent = formatMoney(totalManutencao);
+  if (kpiManutencaoCount) kpiManutencaoCount.textContent = `${despesasPeriodo.length} lançamento(s)`;
+  if (kpiInvestimento) kpiInvestimento.textContent = formatMoney(investimentoTotal);
+
+  // A) Tabela e gráfico de manutenção por tipo/categoria
+  const catMap = {};
+  despesasPeriodo.forEach(d => {
+    const cat = d.categoria || 'Outros';
+    if (!catMap[cat]) catMap[cat] = { total: 0, count: 0 };
+    catMap[cat].total += Number(d.valor) || 0;
+    catMap[cat].count += 1;
+  });
+
+  const sortedCats = Object.entries(catMap).sort((a, b) => b[1].total - a[1].total);
+  const tbodyManutencao = document.getElementById('dashManutencaoTableBody');
+  if (tbodyManutencao) {
+    if (sortedCats.length === 0) {
+      tbodyManutencao.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--text-dim); padding: 20px;">Nenhum lançamento de despesa no período</td></tr>';
+    } else {
+      tbodyManutencao.innerHTML = sortedCats.map(([cat, data]) => {
+        const perc = totalManutencao > 0 ? Math.round((data.total / totalManutencao) * 100) : 0;
+        return `
+          <tr>
+            <td><strong>${escapeHtml(cat)}</strong></td>
+            <td style="text-align: center;"><span class="kpi-footer-badge badge-neutral" style="font-size: 0.75rem;">${data.count}</span></td>
+            <td style="text-align: right; font-weight: 600;">${formatMoney(data.total)}</td>
+            <td style="text-align: right; color: var(--text-muted);">${perc}%</td>
+          </tr>
+        `;
+      }).join('');
+    }
+  }
+
+  // Gráfico de rosca da manutenção por tipo
+  const ctxCat = document.getElementById('chartDashManutencaoCat');
+  if (ctxCat) {
+    if (chartDashManutencaoCatInstance) chartDashManutencaoCatInstance.destroy();
+    if (sortedCats.length > 0) {
+      chartDashManutencaoCatInstance = new Chart(ctxCat, {
+        type: 'doughnut',
+        data: {
+          labels: sortedCats.map(c => c[0]),
+          datasets: [{
+            data: sortedCats.map(c => c[1].total),
+            backgroundColor: [
+              '#f59e0b', '#3b82f6', '#10b981', '#8b5cf6',
+              '#ef4444', '#06b6d4', '#ec4899', '#64748b'
+            ],
+            borderWidth: 2,
+            borderColor: 'transparent'
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'bottom', labels: { boxWidth: 10, color: '#94a3b8', font: { size: 10 } } },
+            tooltip: {
+              callbacks: {
+                label: (ctx) => `${ctx.label}: ${formatMoney(ctx.raw)}`
+              }
+            }
+          }
+        }
+      });
+    }
+  }
+
+  // B) Tabela de gastos com aquisição de veículos
+  const tbodyAquisicao = document.getElementById('dashAquisicaoTableBody');
+  if (tbodyAquisicao) {
+    if (acquiredCars.length === 0) {
+      tbodyAquisicao.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-dim); padding: 20px;">Nenhum veículo adquirido no período selecionado</td></tr>';
+    } else {
+      const sortedAcquired = [...acquiredCars].sort((a, b) => (b.dataCompra || '').localeCompare(a.dataCompra || ''));
+      tbodyAquisicao.innerHTML = sortedAcquired.map(v => {
+        const socNome = v.sociedade || (v.socioId ? `Sócio #${v.socioId}` : 'Próprio');
+        const statusBadge = v.status === 'Vendido'
+          ? '<span class="status-pill pago">Vendido</span>'
+          : '<span class="status-pill upcoming">Em Estoque</span>';
+        return `
+          <tr>
+            <td>
+              <strong>${escapeHtml(v.marca)} ${escapeHtml(v.modelo)}</strong>
+              <div style="font-size: 0.75rem; color: var(--text-dim);">${escapeHtml(v.placa)} • ${v.ano || ''}</div>
+            </td>
+            <td>${formatDate(v.dataCompra)}</td>
+            <td><span class="status-pill" style="font-size: 0.75rem;">${escapeHtml(socNome)}</span></td>
+            <td style="text-align: right; font-weight: 600;">${formatMoney(v.valorCompra || v.custoAquisicao || 0)}</td>
+            <td style="text-align: right; color: var(--warning);">${formatMoney(v.despesasTotal || v.totalDespesas || 0)}</td>
+            <td style="text-align: right; font-weight: 700; color: var(--primary);">${formatMoney(v.custoFinal)}</td>
+            <td style="text-align: center;">${statusBadge}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+  }
+}
+
+// 2. Visão de Vendas, Carros Financiados, Entradas e Evolução dos Pagamentos
+function renderDashboardVendasVisao(socFilter) {
+  const soldCars = appData.veiculos.filter(v => v.status === 'Vendido' && isDateInDashboardPeriod(v.dataVenda) && vehicleMatchesSociedade(v, socFilter));
+
+  // Financiados: vendidos que possuem parcelamento configurado ou parcelas geradas
+  // Inclui vendidos no período ou com parcelas no período
+  const financedCars = appData.veiculos.filter(v => {
+    if (v.status !== 'Vendido') return false;
+    if (!vehicleMatchesSociedade(v, socFilter)) return false;
+    const isFin = (v.numParcelas > 0 || v.parcelamento === 'Parcelado');
+    if (!isFin) return false;
+    if (isDateInDashboardPeriod(v.dataVenda)) return true;
+    const hasPaymentInPeriod = appData.pagamentos.some(p =>
+      Number(p.veiculoId) === Number(v.id) &&
+      (isDateInDashboardPeriod(p.dataPagamento) || isDateInDashboardPeriod(p.dataVencimento))
+    );
+    return hasPaymentInPeriod;
+  });
+
+  const totalVendasValor = soldCars.reduce((acc, v) => acc + (Number(v.valorVenda) || 0), 0);
+  const totalEntradas = financedCars.reduce((acc, v) => acc + (Number(v.valorEntrada) || 0), 0);
+
+  let totalParcelasPagasValor = 0;
+  let totalParcelasPagasCount = 0;
+  let totalSaldoReceber = 0;
+  let totalParcelasPendentesCount = 0;
+
+  financedCars.forEach(v => {
+    const carPayments = appData.pagamentos.filter(p => Number(p.veiculoId) === Number(v.id));
+    carPayments.forEach(p => {
+      if (p.status === 'pago') {
+        totalParcelasPagasValor += (Number(p.valor) || 0);
+        totalParcelasPagasCount += 1;
+      } else {
+        totalSaldoReceber += (Number(p.valor) || 0);
+        totalParcelasPendentesCount += 1;
+      }
+    });
+  });
+
+  const kpiVendasTotal = document.getElementById('dashKpiVendasTotal');
+  const kpiVendasCount = document.getElementById('dashKpiVendasCount');
+  const kpiEntradasTotal = document.getElementById('dashKpiEntradasTotal');
+  const kpiEntradasRatio = document.getElementById('dashKpiEntradasRatio');
+  const kpiParcelasPagasTotal = document.getElementById('dashKpiParcelasPagasTotal');
+  const kpiParcelasPagasCount = document.getElementById('dashKpiParcelasPagasCount');
+  const kpiSaldoReceberTotal = document.getElementById('dashKpiSaldoReceberTotal');
+  const kpiSaldoReceberCount = document.getElementById('dashKpiSaldoReceberCount');
+
+  if (kpiVendasTotal) kpiVendasTotal.textContent = formatMoney(totalVendasValor);
+  if (kpiVendasCount) kpiVendasCount.textContent = `${soldCars.length} venda(s) no período • ${financedCars.length} financiado(s)`;
+  if (kpiEntradasTotal) kpiEntradasTotal.textContent = formatMoney(totalEntradas);
+  if (kpiEntradasRatio) {
+    const ratio = totalVendasValor > 0 ? Math.round((totalEntradas / totalVendasValor) * 100) : 0;
+    kpiEntradasRatio.textContent = `${ratio}% do volume vendido`;
+  }
+  if (kpiParcelasPagasTotal) kpiParcelasPagasTotal.textContent = formatMoney(totalParcelasPagasValor);
+  if (kpiParcelasPagasCount) kpiParcelasPagasCount.textContent = `${totalParcelasPagasCount} parcela(s) recebida(s)`;
+  if (kpiSaldoReceberTotal) kpiSaldoReceberTotal.textContent = formatMoney(totalSaldoReceber);
+  if (kpiSaldoReceberCount) kpiSaldoReceberCount.textContent = `${totalParcelasPendentesCount} parcela(s) pendente(s)`;
+
+  // Tabela de financiamentos e evolução
+  const tbodyFinanciamentos = document.getElementById('dashFinanciamentosTableBody');
+  if (tbodyFinanciamentos) {
+    if (financedCars.length === 0) {
+      tbodyFinanciamentos.innerHTML = '<tr><td colspan="10" style="text-align: center; color: var(--text-dim); padding: 20px;">Nenhum veículo financiado encontrado para o filtro</td></tr>';
+    } else {
+      tbodyFinanciamentos.innerHTML = financedCars.map(v => {
+        const carPayments = appData.pagamentos.filter(p => Number(p.veiculoId) === Number(v.id));
+        const pendentes = carPayments.filter(p => p.status !== 'pago');
+        const pagos = carPayments.filter(p => p.status === 'pago');
+        const pagosCount = pagos.length;
+        const totalParc = v.numParcelas || (carPayments.length || 0);
+        const valorParc = v.valorParcela || (carPayments[0]?.valor || 0);
+
+        const valorEntrada = Number(v.valorEntrada) || 0;
+        const valorVenda = Number(v.valorVenda) || 0;
+        const entradaPerc = valorVenda > 0 ? Math.round((valorEntrada / valorVenda) * 100) : 0;
+
+        const totalPagoParcelas = pagos.reduce((acc, p) => acc + (Number(p.valor) || 0), 0);
+        const totalRecebido = valorEntrada + totalPagoParcelas;
+        const saldoDevedor = pendentes.reduce((acc, p) => acc + (Number(p.valor) || 0), 0);
+
+        const percQuitado = valorVenda > 0 ? Math.min(100, Math.round((totalRecebido / valorVenda) * 100)) : (totalParc > 0 ? Math.round((pagosCount / totalParc) * 100) : 0);
+
+        const isQuitado = pendentes.length === 0 && totalParc > 0;
+        const atrasadas = pendentes.filter(isInstallmentOverdue).length;
+        const situacao = isQuitado
+          ? '<span class="status-pill pago">QUITADO</span>'
+          : (atrasadas > 0
+            ? `<span class="status-pill atrasado">${atrasadas} em atraso</span>`
+            : '<span class="status-pill upcoming">Em dia</span>');
+
+        const barColorClass = isQuitado ? '' : (atrasadas > 0 ? 'warning' : 'primary');
+
+        return `
+          <tr>
+            <td>
+              <strong>${escapeHtml(v.marca)} ${escapeHtml(v.modelo)}</strong>
+              <div style="font-size: 0.75rem; color: var(--text-dim);">${escapeHtml(v.placa)} • ${v.ano || ''}</div>
+            </td>
+            <td><strong>${escapeHtml(v.comprador || 'Não informado')}</strong></td>
+            <td style="text-align: right; font-weight: 700;">${formatMoney(valorVenda)}</td>
+            <td style="text-align: right;">
+              <span style="font-weight: 600; color: var(--primary);">${formatMoney(valorEntrada)}</span>
+              <div style="font-size: 0.72rem; color: var(--text-dim);">${entradaPerc}% da venda</div>
+            </td>
+            <td style="text-align: center;">
+              <strong>${totalParc}x</strong> ${formatMoney(valorParc)}
+            </td>
+            <td style="text-align: right; font-weight: 700; color: var(--success);">${formatMoney(totalRecebido)}</td>
+            <td style="text-align: right; font-weight: 700; color: ${isQuitado ? 'var(--text-dim)' : 'var(--warning)'};">${formatMoney(saldoDevedor)}</td>
+            <td>
+              <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 2px;">
+                <span>${pagosCount}/${totalParc} parcelas</span>
+                <strong style="color: ${isQuitado ? 'var(--success)' : 'var(--text-main)'};">${percQuitado}%</strong>
+              </div>
+              <div class="progress-bar-bg">
+                <div class="progress-bar-fill ${barColorClass}" style="width: ${percQuitado}%;"></div>
+              </div>
+            </td>
+            <td style="text-align: center;">${situacao}</td>
+            <td style="text-align: center;">
+              <button class="btn btn-secondary btn-sm" onclick="viewCarDetail(${v.id}, 'pagamentos')" title="Abrir carnê / parcelas">
+                📋 Carnê
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+  }
+}
+
+// 3. Visão de Lucro das Vendas Quebrado por Classificação
+function renderDashboardLucroVisao(socFilter) {
+  const soldCars = appData.veiculos.filter(v => v.status === 'Vendido' && isDateInDashboardPeriod(v.dataVenda) && vehicleMatchesSociedade(v, socFilter));
+
+  const totalLucro = soldCars.reduce((acc, v) => acc + (v.lucro || 0), 0);
+  const totalCusto = soldCars.reduce((acc, v) => acc + (v.custoFinal || 0), 0);
+  const margemConsolidada = totalCusto > 0 ? Math.round((totalLucro / totalCusto) * 100) : 0;
+
+  // Carro mais lucrativo
+  let topCar = null;
+  soldCars.forEach(v => {
+    if (!topCar || (v.lucro || 0) > (topCar.lucro || 0)) {
+      topCar = v;
+    }
+  });
+
+  const kpiLucro = document.getElementById('dashKpiLucroConsolidado');
+  const kpiLucroCount = document.getElementById('dashKpiLucroConsolidadoCount');
+  const kpiMargem = document.getElementById('dashKpiMargemConsolidada');
+  const kpiTopCar = document.getElementById('dashKpiCarroTopLucro');
+  const kpiTopCarVal = document.getElementById('dashKpiCarroTopLucroVal');
+
+  if (kpiLucro) kpiLucro.textContent = formatMoney(totalLucro);
+  if (kpiLucroCount) kpiLucroCount.textContent = `${soldCars.length} veículo(s) vendido(s)`;
+  if (kpiMargem) kpiMargem.textContent = `${margemConsolidada >= 0 ? '+' : ''}${margemConsolidada}%`;
+  if (kpiTopCar) {
+    kpiTopCar.textContent = topCar ? `${topCar.marca} ${topCar.modelo}` : '-';
+  }
+  if (kpiTopCarVal) {
+    kpiTopCarVal.textContent = topCar ? `${formatMoney(topCar.lucro || 0)} (${topCar.placa})` : 'R$ 0';
+  }
+
+  // A) Quebra por Modalidade (À Vista vs Financiado)
+  const modalidadeMap = {
+    'À Vista': { count: 0, vendas: 0, lucro: 0, custo: 0 },
+    'Financiado / Parcelado': { count: 0, vendas: 0, lucro: 0, custo: 0 }
+  };
+
+  soldCars.forEach(v => {
+    const isFinanciado = (v.numParcelas > 0 || v.parcelamento === 'Parcelado');
+    const key = isFinanciado ? 'Financiado / Parcelado' : 'À Vista';
+    modalidadeMap[key].count += 1;
+    modalidadeMap[key].vendas += (Number(v.valorVenda) || 0);
+    modalidadeMap[key].lucro += (Number(v.lucro) || 0);
+    modalidadeMap[key].custo += (Number(v.custoFinal) || 0);
+  });
+
+  const tbodyModalidade = document.getElementById('dashLucroModalidadeBody');
+  if (tbodyModalidade) {
+    tbodyModalidade.innerHTML = Object.entries(modalidadeMap).map(([mod, d]) => {
+      const margem = d.custo > 0 ? Math.round((d.lucro / d.custo) * 100) : 0;
+      return `
+        <tr>
+          <td><strong>${mod}</strong></td>
+          <td style="text-align: center;">${d.count}</td>
+          <td style="text-align: right;">${formatMoney(d.vendas)}</td>
+          <td style="text-align: right; font-weight: 700; color: ${d.lucro >= 0 ? 'var(--success)' : 'var(--danger)'};">${formatMoney(d.lucro)}</td>
+          <td style="text-align: right; font-weight: 600;">${margem}%</td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  // B) Quebra por Marca / Montadora
+  const marcaMap = {};
+  soldCars.forEach(v => {
+    const m = (v.marca || 'Outras').trim();
+    if (!marcaMap[m]) marcaMap[m] = { count: 0, lucro: 0, custo: 0, vendas: 0 };
+    marcaMap[m].count += 1;
+    marcaMap[m].lucro += (Number(v.lucro) || 0);
+    marcaMap[m].custo += (Number(v.custoFinal) || 0);
+    marcaMap[m].vendas += (Number(v.valorVenda) || 0);
+  });
+
+  const sortedMarcas = Object.entries(marcaMap).sort((a, b) => b[1].lucro - a[1].lucro);
+  const tbodyMarca = document.getElementById('dashLucroMarcaBody');
+  if (tbodyMarca) {
+    if (sortedMarcas.length === 0) {
+      tbodyMarca.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-dim);">Sem vendas no período</td></tr>';
+    } else {
+      tbodyMarca.innerHTML = sortedMarcas.map(([marca, d]) => {
+        const margem = d.custo > 0 ? Math.round((d.lucro / d.custo) * 100) : 0;
+        const medio = d.count > 0 ? Math.round(d.lucro / d.count) : 0;
+        return `
+          <tr>
+            <td><strong>${escapeHtml(marca)}</strong></td>
+            <td style="text-align: center;">${d.count}</td>
+            <td style="text-align: right; font-weight: 700; color: ${d.lucro >= 0 ? 'var(--success)' : 'var(--danger)'};">${formatMoney(d.lucro)}</td>
+            <td style="text-align: right;">${formatMoney(medio)}</td>
+            <td style="text-align: right; font-weight: 600;">${margem}%</td>
+          </tr>
+        `;
+      }).join('');
+    }
+  }
+
+  // C) Quebra por Sociedade / Sócio
+  const socMap = {};
+  soldCars.forEach(v => {
+    const soc = v.sociedade || (v.socioId ? `Sócio #${v.socioId}` : 'Próprio (sem sócio)');
+    if (!socMap[soc]) socMap[soc] = { count: 0, lucro: 0 };
+    socMap[soc].count += 1;
+    socMap[soc].lucro += (Number(v.lucro) || 0);
+  });
+
+  const sortedSoc = Object.entries(socMap).sort((a, b) => b[1].lucro - a[1].lucro);
+  const tbodySociedade = document.getElementById('dashLucroSociedadeBody');
+  if (tbodySociedade) {
+    if (sortedSoc.length === 0) {
+      tbodySociedade.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--text-dim);">Sem vendas no período</td></tr>';
+    } else {
+      tbodySociedade.innerHTML = sortedSoc.map(([soc, d]) => {
+        const part = totalLucro > 0 ? Math.round((d.lucro / totalLucro) * 100) : 0;
+        return `
+          <tr>
+            <td><strong>${escapeHtml(soc)}</strong></td>
+            <td style="text-align: center;">${d.count}</td>
+            <td style="text-align: right; font-weight: 700; color: ${d.lucro >= 0 ? 'var(--success)' : 'var(--danger)'};">${formatMoney(d.lucro)}</td>
+            <td style="text-align: right; font-weight: 600; color: var(--primary);">${part}%</td>
+          </tr>
+        `;
+      }).join('');
+    }
+  }
+
+  // D) Quebra por Faixa de Rentabilidade
+  const faixas = [
+    { nome: 'Alta Rentabilidade (> 30%)', filter: (m) => m > 30, count: 0, lucro: 0 },
+    { nome: 'Média Rentabilidade (15% a 30%)', filter: (m) => m >= 15 && m <= 30, count: 0, lucro: 0 },
+    { nome: 'Baixa Rentabilidade (0% a 15%)', filter: (m) => m >= 0 && m < 15, count: 0, lucro: 0 },
+    { nome: 'Margem Negativa / Prejuízo (< 0%)', filter: (m) => m < 0, count: 0, lucro: 0 }
+  ];
+
+  soldCars.forEach(v => {
+    const margem = (v.custoFinal || 0) > 0 ? ((v.lucro || 0) / v.custoFinal) * 100 : 0;
+    const faixa = faixas.find(f => f.filter(margem)) || faixas[2];
+    faixa.count += 1;
+    faixa.lucro += (v.lucro || 0);
+  });
+
+  const tbodyFaixa = document.getElementById('dashLucroFaixaBody');
+  if (tbodyFaixa) {
+    tbodyFaixa.innerHTML = faixas.map(f => {
+      const part = totalLucro > 0 ? Math.round((f.lucro / totalLucro) * 100) : 0;
+      return `
+        <tr>
+          <td><strong>${f.nome}</strong></td>
+          <td style="text-align: center;">${f.count}</td>
+          <td style="text-align: right; font-weight: 700; color: ${f.lucro >= 0 ? 'var(--success)' : 'var(--danger)'};">${formatMoney(f.lucro)}</td>
+          <td style="text-align: right; color: var(--text-muted);">${part}%</td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  // E) Ranking Completo de Veículos Vendidos
+  const tbodyRanking = document.getElementById('dashLucroRankingBody');
+  if (tbodyRanking) {
+    if (soldCars.length === 0) {
+      tbodyRanking.innerHTML = '<tr><td colspan="9" style="text-align: center; color: var(--text-dim); padding: 20px;">Nenhum veículo vendido no período selecionado</td></tr>';
+    } else {
+      const sortedRanking = [...soldCars].sort((a, b) => (b.lucro || 0) - (a.lucro || 0));
+      tbodyRanking.innerHTML = sortedRanking.map((v, idx) => {
+        const margem = (v.custoFinal || 0) > 0 ? Math.round(((v.lucro || 0) / v.custoFinal) * 100) : 0;
+        const isFinanciado = (v.numParcelas > 0 || v.parcelamento === 'Parcelado');
+        const socNome = v.sociedade || (v.socioId ? `Sócio #${v.socioId}` : 'Próprio');
+        return `
+          <tr>
+            <td style="text-align: center; font-weight: 700; color: ${idx < 3 ? 'var(--warning)' : 'var(--text-dim)'};">#${idx + 1}</td>
+            <td>
+              <strong>${escapeHtml(v.marca)} ${escapeHtml(v.modelo)}</strong>
+              <div style="font-size: 0.75rem; color: var(--text-dim);">${escapeHtml(v.placa)} • ${v.ano || ''}</div>
+            </td>
+            <td>${formatDate(v.dataVenda)}</td>
+            <td><span class="status-pill" style="font-size: 0.75rem;">${isFinanciado ? 'Financiado' : 'À Vista'}</span></td>
+            <td><span class="status-pill" style="font-size: 0.75rem;">${escapeHtml(socNome)}</span></td>
+            <td style="text-align: right;">${formatMoney(v.custoFinal)}</td>
+            <td style="text-align: right; font-weight: 600;">${formatMoney(v.valorVenda)}</td>
+            <td style="text-align: right; font-weight: 700; color: ${v.lucro >= 0 ? 'var(--success)' : 'var(--danger)'};">${formatMoney(v.lucro)}</td>
+            <td style="text-align: right; font-weight: 700; color: ${margem >= 0 ? 'var(--success)' : 'var(--danger)'};">${margem >= 0 ? '+' : ''}${margem}%</td>
+          </tr>
+        `;
+      }).join('');
+    }
   }
 }
 
@@ -1596,8 +2119,8 @@ function renderDetailCarPayments(car) {
       <td>${formatDate(p.dataVencimento)}</td>
       <td><strong>${formatMoney(p.valor)}</strong></td>
       <td>${isInstallmentOverdue(p)
-        ? '<span class="status-pill atrasado">ATRASADO</span>'
-        : `<span class="status-pill ${p.status === 'pago' ? 'pago' : 'pendente'}">${p.status.toUpperCase()}</span>`}</td>
+      ? '<span class="status-pill atrasado">ATRASADO</span>'
+      : `<span class="status-pill ${p.status === 'pago' ? 'pago' : 'pendente'}">${p.status.toUpperCase()}</span>`}</td>
       <td>${p.dataPagamento ? formatDate(p.dataPagamento) : '-'}</td>
       <td>
         ${p.status !== 'pago'
